@@ -1,0 +1,2306 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>歯科往診スケジュール管理システム</title>
+    <!-- SheetJS (Excel読み込み用) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- SortableJS (ドラッグ＆ドロップ並び替え用) -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <!-- Lucide Icons (アイコン用) -->
+    <script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+    <style>
+        /* コントラストを強化したプレミアムな医療用カラーパレット */
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #eff6ff;
+            --secondary: #059669;
+            --secondary-dark: #047857;
+            --secondary-light: #ecfdf5;
+            --dark-bg: #0f172a;        /* サイドバーなどの暗い背景 */
+            --dark-card: #1e293b;      /* サイドバー内カード */
+            --light-bg: #f1f5f9;       /* メイン画面の背景 */
+            --white-card: #ffffff;     /* メインカードの背景 */
+            --text-dark: #0f172a;      /* 濃いテキスト */
+            --text-light: #f8fafc;     /* 薄いテキスト */
+            --text-muted: #64748b;     /* サブテキスト */
+            --border: #cbd5e1;         /* 境界線（コントラスト強め） */
+            --border-light: #e2e8f0;   /* 薄い境界線 */
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.08);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
+        }
+
+        body {
+            background-color: var(--light-bg);
+            color: var(--text-dark);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ヘッダー */
+        header {
+            background-color: var(--dark-bg);
+            border-bottom: 2px solid var(--primary);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            color: var(--text-light);
+            z-index: 20;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-area h1 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            color: #fff;
+        }
+
+        .clinic-info-summary {
+            font-size: 0.95rem;
+            font-weight: 600;
+            background-color: var(--primary-dark);
+            padding: 0.4rem 1rem;
+            border-radius: 9999px;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        /* メインレイアウト */
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            height: calc(100vh - 67px);
+        }
+
+        /* ウェルカム画面 */
+        .welcome-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .drop-zone {
+            background-color: var(--white-card);
+            border: 3px dashed var(--primary);
+            border-radius: 1.5rem;
+            padding: 5rem 3rem;
+            width: 100%;
+            max-width: 650px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .drop-zone:hover, .drop-zone.dragover {
+            background-color: var(--primary-light);
+            border-color: var(--primary-dark);
+            transform: translateY(-4px);
+        }
+
+        .drop-zone-icon {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background-color: var(--primary-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+        }
+
+        .drop-zone p {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        .drop-zone span {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        /* メインアプリ画面 */
+        .app-layout {
+            display: flex;
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* 暗い色調の引き締まったサイドバー */
+        .sidebar {
+            width: 340px;
+            background-color: var(--dark-bg);
+            color: var(--text-light);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            overflow-y: auto;
+            box-shadow: 4px 0 10px -3px rgba(0,0,0,0.15);
+            z-index: 10;
+        }
+
+        .sidebar-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .sidebar-section label {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .select-input, .date-input, .time-input, .text-input {
+            width: 100%;
+            padding: 0.8rem;
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+            font-size: 0.95rem;
+            background-color: #1e293b;
+            color: #fff;
+            outline: none;
+            transition: all 0.2s;
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+        }
+
+        .select-input:focus, .date-input:focus, .time-input:focus, .text-input:focus {
+            border-color: var(--primary);
+            background-color: #0f172a;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.3);
+        }
+
+        .clinic-settings-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #334155;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #94a3b8;
+        }
+
+        .clinic-settings-form {
+            display: none;
+            flex-direction: column;
+            gap: 0.8rem;
+            padding-top: 0.5rem;
+        }
+
+        .clinic-settings-form.open {
+            display: flex;
+        }
+
+        /* メインエリア */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* タブバー（引き締まった色合い） */
+        .tab-bar {
+            display: flex;
+            background-color: var(--white-card);
+            border-bottom: 2px solid var(--border);
+            padding: 0 2rem;
+            gap: 1.5rem;
+            box-shadow: 0 2px 4px -1px rgba(0,0,0,0.02);
+        }
+
+        .tab-btn {
+            padding: 1.25rem 0.5rem;
+            border: none;
+            background: none;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            cursor: pointer;
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .tab-btn:hover {
+            color: var(--primary);
+        }
+
+        .tab-btn.active {
+            color: var(--primary);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background-color: var(--primary);
+            border-radius: 4px 4px 0 0;
+        }
+
+        /* タブコンテンツ */
+        .tab-content {
+            flex: 1;
+            padding: 1.75rem;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* セットアップ画面 */
+        .setup-grid {
+            display: grid;
+            grid-template-columns: 1.15fr 0.85fr;
+            gap: 1.75rem;
+            height: 100%;
+            align-items: start;
+        }
+
+        .panel-card {
+            background-color: var(--white-card);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 180px);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 1.25rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #fafafa;
+        }
+
+        .panel-title {
+            font-size: 1.05rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            color: var(--text-dark);
+        }
+
+        .panel-body {
+            padding: 0;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        /* 患者一覧テーブル（縞模様・コントラスト強化） */
+        .patient-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        .patient-table th, .patient-table td {
+            padding: 0.9rem 1rem;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .patient-table th {
+            background-color: var(--dark-bg);
+            color: #fff;
+            font-weight: 700;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .patient-table tr:nth-child(even) {
+            background-color: #f8fafc;
+        }
+
+        .patient-table tr:hover {
+            background-color: var(--primary-light);
+        }
+
+        .checkbox-cell {
+            text-align: center;
+            width: 60px;
+        }
+
+        .patient-checkbox {
+            width: 1.3rem;
+            height: 1.3rem;
+            border-radius: 0.35rem;
+            border: 2px solid var(--border);
+            cursor: pointer;
+            accent-color: var(--primary);
+        }
+
+        .patient-checkbox:disabled {
+            cursor: not-allowed;
+            opacity: 0.4;
+        }
+
+        /* バッジ（高コントラスト） */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .badge-primary {
+            background-color: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+        }
+
+        .badge-secondary {
+            background-color: #e2e8f0;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+        }
+
+        .badge-success {
+            background-color: #d1fae5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+
+        .badge-danger {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        /* 選択リスト（立体感） */
+        .selected-list-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 1.25rem;
+        }
+
+        .sortable-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.9rem;
+            background-color: var(--white-card);
+            border: 1px solid var(--border);
+            border-left: 5px solid var(--primary); /* 青いアクセントライン */
+            border-radius: 0.6rem;
+            cursor: grab;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+            user-select: none;
+        }
+
+        .sortable-item.cancelled-item {
+            border-left-color: var(--danger);
+            opacity: 0.75;
+            background-color: #fef2f2;
+        }
+
+        .sortable-item:active {
+            cursor: grabbing;
+        }
+
+        .sortable-item.sortable-ghost {
+            opacity: 0.3;
+            background-color: var(--primary-light);
+            border-color: var(--primary);
+        }
+
+        .handle {
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+        }
+
+        .item-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            min-width: 0; /* 折り返し対応 */
+        }
+
+        .item-name {
+            font-weight: 800;
+            font-size: 0.95rem;
+            color: var(--text-dark);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .item-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .item-times {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            background-color: #f1f5f9;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.4rem;
+            border: 1px solid var(--border-light);
+            min-width: 135px;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        /* 往診回数の切り替えトグルボタン */
+        .visit-type-btn {
+            background-color: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 0.35rem 0.6rem;
+            border-radius: 0.35rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+            text-align: center;
+            min-width: 90px;
+        }
+
+        .visit-type-btn.v2 {
+            background-color: var(--secondary);
+            box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
+        }
+
+        /* 完了・キャンセルステータスボタン */
+        .status-toggle-btn {
+            background-color: var(--success);
+            color: #fff;
+            border: none;
+            padding: 0.35rem 0.6rem;
+            border-radius: 0.35rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s;
+            box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+            text-align: center;
+            min-width: 80px;
+        }
+
+        .status-toggle-btn.cancelled {
+            background-color: var(--danger);
+            box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
+        }
+
+        .visit-type-btn:hover, .status-toggle-btn:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.1);
+        }
+
+        .visit-type-btn:disabled, .status-toggle-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .item-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .action-btn-small {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 0.3rem;
+            border-radius: 0.35rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .action-btn-small:hover {
+            background-color: var(--border-light);
+            color: var(--text-dark);
+        }
+
+        .action-btn-small.delete:hover {
+            background-color: #fee2e2;
+            color: var(--danger);
+        }
+
+        /* 印刷プレビュー用コンテナ */
+        .preview-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            background-color: var(--white-card);
+            padding: 1rem 1.5rem;
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            box-shadow: var(--shadow);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            background-color: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 0.7rem 1.4rem;
+            font-size: 0.95rem;
+            font-weight: 700;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+        }
+
+        .btn:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-success {
+            background-color: var(--secondary);
+            box-shadow: 0 4px 6px -1px rgba(5, 150, 105, 0.2);
+        }
+
+        .btn-success:hover {
+            background-color: var(--secondary-dark);
+        }
+
+        .btn-secondary {
+            background-color: #cbd5e1;
+            color: #334155;
+            box-shadow: none;
+        }
+
+        .btn-secondary:hover {
+            background-color: #94a3b8;
+            color: #fff;
+        }
+
+        .print-area-wrapper {
+            display: flex;
+            justify-content: center;
+            background-color: #64748b; /* コントラストを高める暗めのプレビュー外背景 */
+            padding: 2.5rem;
+            overflow-y: auto;
+            flex: 1;
+            border-radius: 0.75rem;
+            box-shadow: inset 0 4px 6px 0 rgba(0,0,0,0.15);
+        }
+
+        /* A4印刷プレビューのベースCSS（画面表示用） */
+        .a4-page {
+            background-color: #ffffff;
+            width: 210mm;
+            min-height: 297mm;
+            padding: 12mm;
+            box-shadow: var(--shadow-lg);
+            position: relative;
+            color: #000000;
+            font-size: 10pt;
+            line-height: 1.3;
+            box-sizing: border-box;
+        }
+
+        /* 帳票共通デザイン */
+        .report-header {
+            border-bottom: 2px solid #000000;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .report-title {
+            font-size: 18pt;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+        }
+
+        .report-meta {
+            text-align: right;
+            font-size: 9pt;
+        }
+
+        /* 往診リスト用テーブル（印刷用） */
+        .report-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 8.5pt;
+        }
+
+        .report-table th, .report-table td {
+            border: 1px solid #000000;
+            padding: 4px 6px;
+            vertical-align: middle;
+        }
+
+        .report-table th {
+            background-color: #f2f2f2;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .text-center { text-align: center; }
+        .font-bold { font-weight: bold; }
+
+        /* FAX送信表デザイン */
+        .fax-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            height: 100%;
+            color: #000;
+        }
+
+        .fax-title {
+            font-size: 26pt;
+            font-weight: 700;
+            text-align: center;
+            letter-spacing: 0.5em;
+            margin-bottom: 1.5rem;
+            border-bottom: 3px double #000;
+            padding-bottom: 0.5rem;
+        }
+
+        .fax-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .fax-info-box {
+            border: 1.5px solid #000000;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            min-height: 150px;
+        }
+
+        .fax-info-row {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 0.25rem;
+            font-size: 11pt;
+        }
+
+        .fax-info-row.no-border {
+            border-bottom: none;
+        }
+
+        .fax-info-row span:first-child {
+            font-weight: bold;
+        }
+
+        .fax-message-box {
+            border: 1.5px solid #000000;
+            padding: 1.5rem;
+            min-height: 120px;
+            font-size: 11pt;
+            line-height: 1.7;
+            margin-bottom: 1.5rem;
+        }
+
+        .fax-patients-title {
+            font-size: 12pt;
+            font-weight: bold;
+            border-left: 5px solid #000;
+            padding-left: 0.6rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .fax-patients-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            border: 1.5px solid #000000;
+            padding: 1.25rem;
+            min-height: 250px;
+            align-content: start;
+        }
+
+        .fax-patient-cell {
+            padding: 0.5rem;
+            border-bottom: 1px solid #ccc;
+            font-size: 10.5pt;
+            text-align: center;
+        }
+
+        /* 往診回数表 */
+        .times-report-desc {
+            font-size: 9.5pt;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+
+        .print-indicator {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            font-size: 8pt;
+            color: var(--text-muted);
+            background-color: var(--border-light);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .empty-list-msg {
+            padding: 3rem 2rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .top-action-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: var(--white-card);
+            border-bottom: 1px solid var(--border);
+            padding: 0.75rem 1.5rem;
+        }
+
+        /* スマホ用レスポンシブデザイン */
+        @media (max-width: 768px) {
+            .app-layout {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--border);
+            }
+            .setup-grid {
+                grid-template-columns: 1fr;
+            }
+            .tab-bar {
+                flex-wrap: wrap;
+            }
+            .tab-btn {
+                flex: 1 1 45%;
+                font-size: 0.85rem;
+                padding: 0.6rem;
+            }
+            .patient-table th, .patient-table td {
+                padding: 0.5rem;
+                font-size: 0.85rem;
+            }
+            .panel-body {
+                overflow-x: auto;
+            }
+        }
+
+        /* 画面印刷用のメディアクエリ */
+        @media print {
+            body {
+                background-color: #ffffff;
+                color: #000000;
+                min-height: auto;
+            }
+
+            header, .sidebar, .tab-bar, .preview-controls, .top-action-bar, .print-indicator, .no-print {
+                display: none !important;
+            }
+
+            .container {
+                display: block;
+                height: auto;
+                overflow: visible;
+            }
+
+            .main-content {
+                display: block;
+                overflow: visible;
+                height: auto;
+            }
+
+            .tab-content {
+                display: none !important;
+                padding: 0;
+                overflow: visible;
+            }
+
+            .tab-content.active {
+                display: block !important;
+            }
+
+            .print-area-wrapper {
+                background-color: transparent;
+                padding: 0;
+                overflow: visible;
+                display: block;
+            }
+
+            .a4-page {
+                box-shadow: none;
+                padding: 0;
+                width: 100%;
+                min-height: auto;
+                page-break-after: avoid;
+                page-break-inside: avoid;
+            }
+
+            @page {
+                size: A4 portrait;
+                margin: 10mm;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ヘッダー -->
+    <header class="no-print">
+        <div class="logo-area">
+            <i data-lucide="clipboard-list" style="width: 30px; height: 30px; color: #3b82f6;"></i>
+            <h1>歯科往診スケジュール作成</h1>
+        </div>
+        <div class="clinic-info-summary" id="header-clinic-name">
+            歯科医院情報未登録
+        </div>
+    </header>
+
+    <!-- 初期画面：Excelファイルのアップロード -->
+    <div class="welcome-screen no-print" id="welcome-screen">
+        <div class="drop-zone" id="drop-zone">
+            <div class="drop-zone-icon">
+                <i data-lucide="file-spreadsheet" style="width: 50px; height: 50px;"></i>
+            </div>
+            <div>
+                <p>往診データベース (Excelファイル) をここにドラッグ＆ドロップ</p>
+                <span style="display: block; margin-top: 0.5rem;">または、ここをクリックしてファイルを選択</span>
+            </div>
+            <span>対応フォーマット: .xlsx, .xls</span>
+            <input type="file" id="file-input" class="file-input" accept=".xlsx, .xls">
+        </div>
+        <div style="margin-top: 2.5rem; max-width: 650px; text-align: left; background: var(--white-card); padding: 2rem; border-radius: 1rem; border: 1px solid var(--border); box-shadow: var(--shadow);">
+            <h3 style="margin-bottom: 0.75rem; color: var(--primary); font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <i data-lucide="help-circle" style="width: 20px; height: 20px;"></i>
+                データベースExcelの推奨レイアウト
+            </h3>
+            <p style="font-size: 0.9rem; line-height: 1.6; color: var(--text-dark);">
+                Excelファイル内に、施設名（例: **「鴻巣フラワーパレス」**、**「川里苑」**など）ごとにシートを作成します。<br>
+                各シートの1行目に、以下の列名を作成してデータを入力してください。<br>
+                <code style="background-color: var(--light-bg); padding: 0.25rem 0.5rem; border-radius: 0.25rem; display: inline-block; margin-top: 0.5rem; font-weight: bold;">
+                    部屋番号 | カルテNo | 名前 | 義歯 | 1回目診察日 | 2回目診察日 | 注意事項 | 備考
+                </code>
+            </p>
+        </div>
+    </div>
+
+    <!-- アプリメイン画面 -->
+    <div class="app-layout no-print" id="app-layout" style="display: none;">
+        <!-- 左側サイドバー（コントロール） -->
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <label for="facility-select">対象施設</label>
+                <select id="facility-select" class="select-input">
+                    <!-- JSで動的生成 -->
+                </select>
+            </div>
+
+            <div class="sidebar-section">
+                <label for="visit-date">往診日</label>
+                <input type="date" id="visit-date" class="date-input">
+            </div>
+
+            <div class="sidebar-section">
+                <label for="start-time">訪問開始時間</label>
+                <input type="time" id="start-time" class="time-input" value="09:00">
+            </div>
+
+            <!-- 歯科医院情報の設定（折りたたみ可能） -->
+            <div class="sidebar-section" style="border-top: 1px solid #334155; padding-top: 1.25rem; margin-top: 0.5rem;">
+                <div class="clinic-settings-toggle" id="clinic-settings-toggle">
+                    <span style="display: flex; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="hospital" style="width: 18px; height: 18px; color: #3b82f6;"></i>
+                        歯科医院の設定
+                    </span>
+                    <i data-lucide="chevron-down" style="width: 16px; height: 16px;" id="clinic-settings-arrow"></i>
+                </div>
+                <div class="clinic-settings-form" id="clinic-settings-form">
+                    <div class="sidebar-section">
+                        <label for="clinic-name">歯科医院名</label>
+                        <input type="text" id="clinic-name" class="text-input">
+                    </div>
+                    <div class="sidebar-section">
+                        <label for="clinic-addr">住所</label>
+                        <input type="text" id="clinic-addr" class="text-input" placeholder="埼玉県鴻巣市...">
+                    </div>
+                    <div class="sidebar-section">
+                        <label for="clinic-sender">担当者（送信者）</label>
+                        <input type="text" id="clinic-sender" class="text-input">
+                    </div>
+                    <div class="sidebar-section">
+                        <label for="clinic-tel">電話番号</label>
+                        <input type="text" id="clinic-tel" class="text-input">
+                    </div>
+                    <div class="sidebar-section">
+                        <label for="clinic-fax">FAX番号</label>
+                        <input type="text" id="clinic-fax" class="text-input">
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: auto; padding-top: 1rem; border-top: 1px solid #334155;">
+                <button class="btn btn-secondary" id="reselect-file-btn" style="width: 100%;">
+                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                    別ファイルを選択する
+                </button>
+            </div>
+        </aside>
+
+        <!-- 右側メインエリア -->
+        <main class="main-content">
+            <!-- タブバー -->
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="setup-tab">
+                    <i data-lucide="settings" style="width: 18px; height: 18px;"></i>
+                    ① 往診設定・順序変更
+                </button>
+                <button class="tab-btn" data-tab="report-list-tab">
+                    <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
+                    ② 往診リスト印刷
+                </button>
+                <button class="tab-btn" data-tab="report-fax-tab">
+                    <i data-lucide="send" style="width: 18px; height: 18px;"></i>
+                    ③ FAX送信表印刷
+                </button>
+                <button class="tab-btn" data-tab="report-times-tab">
+                    <i data-lucide="calendar-check" style="width: 18px; height: 18px;"></i>
+                    ④ 往診回数表印刷
+                </button>
+            </div>
+
+            <!-- ① メンバー設定タブ -->
+            <div class="tab-content active" id="setup-tab" style="height: 100%;">
+                <div class="setup-grid">
+                    <!-- 左カラム：施設患者一覧 -->
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <h2 class="panel-title">
+                                <i data-lucide="users" style="width: 20px; height: 20px; color: var(--primary);"></i>
+                                <span id="setup-facility-title">施設患者一覧</span>
+                            </h2>
+                            <span class="badge badge-primary" id="patient-count-badge">0名登録</span>
+                        </div>
+                        <div class="panel-body">
+                            <!-- 一括選択コントロール -->
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
+                                <button class="btn btn-secondary" onclick="selectAllPatients()" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;" title="表示されている全員（完了済を除く）を選択">
+                                    <i data-lucide="check-square" style="width: 16px; height: 16px;"></i> 全選択
+                                </button>
+                                <button class="btn btn-secondary" onclick="deselectAllPatients()" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
+                                    <i data-lucide="square" style="width: 16px; height: 16px;"></i> 全解除
+                                </button>
+                                <div style="display: flex; align-items: center; gap: 0.25rem; margin-left: auto;">
+                                    <span style="font-size: 0.9rem; color: var(--text-dark);">上から</span>
+                                    <input type="number" id="bulk-select-count" min="1" value="10" style="width: 60px; padding: 0.25rem; border: 1px solid var(--border); border-radius: 4px; text-align: center;">
+                                    <span style="font-size: 0.9rem; color: var(--text-dark);">名</span>
+                                    <button class="btn btn-secondary" onclick="selectTopNPatients()" style="padding: 0.4rem 0.8rem; font-size: 0.9rem; background-color: var(--primary); color: white;">
+                                        一括選択
+                                    </button>
+                                </div>
+                            </div>
+                            <table class="patient-table">
+                                <thead>
+                                    <tr>
+                                        <th class="checkbox-cell">選択</th>
+                                        <th>部屋</th>
+                                        <th>カルテNo</th>
+                                        <th>名前</th>
+                                        <th>義歯</th>
+                                        <th>当月実績</th>
+                                        <th>注意事項</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="patient-table-body">
+                                    <!-- JSで動的生成 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 右カラム：今日のスケジュール（並び替え） -->
+                    <div class="panel-card">
+                        <div class="panel-header">
+                            <h2 class="panel-title">
+                                <i data-lucide="arrow-up-down" style="width: 20px; height: 20px; color: var(--secondary);"></i>
+                                本日の往診スケジュール
+                            </h2>
+                            <span class="badge badge-success" id="selected-count-badge">0名選択</span>
+                        </div>
+                        <div class="panel-body" style="background-color: var(--light-bg);">
+                            <div id="selected-list" class="selected-list-container">
+                                <!-- JSで動的生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ② 往診リスト印刷タブ -->
+            <div class="tab-content" id="report-list-tab">
+                <div class="preview-controls">
+                    <span style="font-weight: bold; color: var(--text-dark);">🖨️ A4縦に収まるよう自動調整されています。</span>
+                    <button class="btn" onclick="window.print()">
+                        <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
+                        このリストを印刷 (A4)
+                    </button>
+                </div>
+                <div class="print-area-wrapper">
+                    <div class="a4-page" id="print-list-page">
+                        <span class="print-indicator">印刷プレビュー（A4縦）</span>
+                        <div class="report-header">
+                            <div class="report-title" id="list-report-facility">〇〇 往診スケジュール</div>
+                            <div class="report-meta">
+                                <strong>往診日：</strong><span id="list-report-date">2026/05/26</span>
+                            </div>
+                        </div>
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 7%;">部屋</th>
+                                    <th style="width: 8%;">カルテNo</th>
+                                    <th style="width: 15%;">名前</th>
+                                    <th style="width: 9%;">義歯</th>
+                                    <th style="width: 14%;">医師診察時間</th>
+                                    <th style="width: 14%;">衛生士診察時間</th>
+                                    <th style="width: 18%;">注意事項</th>
+                                    <th style="width: 15%;">備考（メモ欄）</th>
+                                </tr>
+                            </thead>
+                            <tbody id="print-list-tbody">
+                                <!-- JSで動的生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ③ FAX送信表印刷タブ -->
+            <div class="tab-content" id="report-fax-tab">
+                <div class="preview-controls">
+                    <span style="font-weight: bold; color: var(--text-dark);">🖨️ 事前に施設へ往診予定者をお知らせするFAX用送信表です。</span>
+                    <button class="btn" onclick="window.print()">
+                        <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
+                        FAX送信表を印刷 (A4)
+                    </button>
+                </div>
+                <div class="print-area-wrapper">
+                    <div class="a4-page" id="print-fax-page">
+                        <span class="print-indicator">印刷プレビュー（A4縦）</span>
+                        <div class="fax-layout">
+                            <div class="fax-title">FAX 送信票</div>
+                            <div class="fax-info-grid">
+                                <div class="fax-info-box">
+                                    <div class="fax-info-row">
+                                        <span>宛先（施設名）</span>
+                                    </div>
+                                    <div style="font-size: 15pt; font-weight: bold; margin-top: 0.5rem;" id="fax-target-facility">
+                                        〇〇 御中
+                                    </div>
+                                    <div style="font-size: 10pt; color: #444; text-align: right; margin-top: auto;">
+                                        ご担当者様
+                                    </div>
+                                </div>
+                                <div class="fax-info-box">
+                                    <div class="fax-info-row">
+                                        <span>送信元（差出人）</span>
+                                    </div>
+                                    <div style="font-size: 11pt; font-weight: bold; margin-bottom: 0.25rem;" id="fax-clinic-name">
+                                        はぎわら歯科こども歯科クリニック
+                                    </div>
+                                    <div style="font-size: 9pt; color: #555; margin-bottom: 0.5rem; line-height: 1.2;" id="fax-clinic-addr">
+                                        埼玉県鴻巣市神明２－９－２３
+                                    </div>
+                                    <div class="fax-info-row">
+                                        <span>担当</span>
+                                        <span id="fax-clinic-sender">佐藤</span>
+                                    </div>
+                                    <div class="fax-info-row">
+                                        <span>TEL</span>
+                                        <span id="fax-clinic-tel">048-596-5254</span>
+                                    </div>
+                                    <div class="fax-info-row no-border">
+                                        <span>FAX</span>
+                                        <span id="fax-clinic-fax">048-596-5254</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="fax-info-row" style="border-bottom: 2px solid #000; padding-bottom: 0.5rem; font-size: 12pt;">
+                                <span>送信日：<span id="fax-send-date">2026年05月26日</span></span>
+                                <span>往診日：<strong id="fax-visit-date-str">2026年05月26日</strong></span>
+                            </div>
+
+                            <div class="fax-message-box">
+                                いつもお世話になっております。<br>
+                                上記往診日の歯科診療の予定者リストをお送りいたします。<br>
+                                当日はどうぞよろしくお願い申し上げます。
+                            </div>
+
+                            <div class="fax-patients-title">往診予定者 一覧（計 <span id="fax-patient-count">0</span> 名）</div>
+                            <div class="fax-patients-grid" id="fax-patients-grid">
+                                <!-- JSで動的生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ④ 往診回数表印刷タブ -->
+            <div class="tab-content" id="report-times-tab">
+                <div class="preview-controls">
+                    <span style="font-weight: bold; color: var(--text-dark);">🖨️ 実績保存後の当月往診履歴です。</span>
+                    <div class="btn-group">
+                        <button class="btn btn-success" onclick="exportUpdatedExcel()">
+                            <i data-lucide="download" style="width: 18px; height: 18px;"></i>
+                            結果をデータベースへ保存 (Excel出力)
+                        </button>
+                        <button class="btn" onclick="window.print()">
+                            <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
+                            往診回数表を印刷 (A4)
+                        </button>
+                    </div>
+                </div>
+                <div class="print-area-wrapper">
+                    <div class="a4-page" id="print-times-page">
+                        <span class="print-indicator">印刷プレビュー（A4縦）</span>
+                        <div class="report-header">
+                            <div class="report-title" id="times-report-facility">〇〇 往診実績回数表</div>
+                            <div class="report-meta">
+                                <strong>集計日：</strong><span id="times-report-date">2026/05/26</span>
+                            </div>
+                        </div>
+                        <div class="times-report-desc">
+                            当月の各患者様の歯科往診回数（最大2回）の実施実績です。（本日の往診については「実施」にチェックが入っている患者のみ算入されます）
+                        </div>
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 10%;">部屋</th>
+                                    <th style="width: 15%;">カルテNo</th>
+                                    <th style="width: 25%;">名前</th>
+                                    <th style="width: 15%;">往診回数</th>
+                                    <th style="width: 35%;">往診実施実績</th>
+                                </tr>
+                            </thead>
+                            <tbody id="print-times-tbody">
+                                <!-- JSで動的生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- アプリケーションロジック -->
+    <script>
+        // デフォルトのクリニック情報を定義
+        const defaultClinicInfo = {
+            name: 'はぎわら歯科こども歯科クリニック',
+            addr: '埼玉県鴻巣市神明２－９－２３',
+            sender: '佐藤（歯科衛生士）',
+            tel: '048-596-5254',
+            fax: '048-596-5254'
+        };
+
+        // グローバルアプリケーション状態
+        let appState = {
+            workbook: null,
+            sheets: [],
+            currentSheet: '',
+            selectedDate: '',
+            patients: [],       // 現在の施設の全患者マスター
+            activePatients: [], // 本日往診する患者リスト（順序維持）
+            startTime: '09:00',
+            clinicInfo: {...defaultClinicInfo}
+        };
+
+        // Shiftキーでの範囲選択用
+        let lastCheckedIndex = -1;
+
+        // 初期ロード処理
+        window.addEventListener('DOMContentLoaded', () => {
+            initLucide();
+            setupWelcomeScreen();
+            setupClinicSettings();
+            setupTabEvents();
+            setupControlEvents();
+            
+            // 今日の日付をデフォルト設定
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('visit-date').value = today;
+            appState.selectedDate = today;
+        });
+
+        function initLucide() {
+            lucide.createIcons();
+        }
+
+        // 歯科医院の設定情報（LocalStorage）
+        function setupClinicSettings() {
+            const savedInfo = localStorage.getItem('hcs_clinic_info');
+            if (savedInfo) {
+                try {
+                    const parsed = JSON.parse(savedInfo);
+                    appState.clinicInfo = {
+                        name: parsed.name || defaultClinicInfo.name,
+                        addr: parsed.addr || defaultClinicInfo.addr,
+                        sender: parsed.sender || defaultClinicInfo.sender,
+                        tel: parsed.tel || defaultClinicInfo.tel,
+                        fax: parsed.fax || defaultClinicInfo.fax
+                    };
+                } catch (e) {
+                    console.error('Failed to parse clinic info', e);
+                }
+            }
+
+            // フォームへ初期値マッピング
+            document.getElementById('clinic-name').value = appState.clinicInfo.name;
+            document.getElementById('clinic-addr').value = appState.clinicInfo.addr;
+            document.getElementById('clinic-sender').value = appState.clinicInfo.sender;
+            document.getElementById('clinic-tel').value = appState.clinicInfo.tel;
+            document.getElementById('clinic-fax').value = appState.clinicInfo.fax;
+            updateHeaderClinicName();
+
+            // 折りたたみトグル
+            const toggle = document.getElementById('clinic-settings-toggle');
+            const form = document.getElementById('clinic-settings-form');
+            const arrow = document.getElementById('clinic-settings-arrow');
+            toggle.addEventListener('click', () => {
+                const isOpen = form.classList.toggle('open');
+                arrow.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+                arrow.style.transition = 'transform 0.2s ease';
+            });
+
+            // 変更監視
+            const inputs = ['clinic-name', 'clinic-addr', 'clinic-sender', 'clinic-tel', 'clinic-fax'];
+            inputs.forEach(id => {
+                document.getElementById(id).addEventListener('input', () => {
+                    appState.clinicInfo.name = document.getElementById('clinic-name').value;
+                    appState.clinicInfo.addr = document.getElementById('clinic-addr').value;
+                    appState.clinicInfo.sender = document.getElementById('clinic-sender').value;
+                    appState.clinicInfo.tel = document.getElementById('clinic-tel').value;
+                    appState.clinicInfo.fax = document.getElementById('clinic-fax').value;
+                    localStorage.setItem('hcs_clinic_info', JSON.stringify(appState.clinicInfo));
+                    updateHeaderClinicName();
+                    updateReports();
+                });
+            });
+        }
+
+        function updateHeaderClinicName() {
+            const el = document.getElementById('header-clinic-name');
+            if (appState.clinicInfo.name) {
+                el.textContent = `🏥 ${appState.clinicInfo.name}`;
+            } else {
+                el.textContent = '歯科医院情報未登録';
+            }
+        }
+
+        // タブ切り替え処理
+        function setupTabEvents() {
+            const tabs = document.querySelectorAll('.tab-btn');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+
+                    const targetId = tab.dataset.tab;
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    document.getElementById(targetId).classList.add('active');
+                });
+            });
+        }
+
+        // ファイルアップロード画面のイベント
+        function setupWelcomeScreen() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+
+            dropZone.addEventListener('click', () => fileInput.click());
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('dragover');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('dragover');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('dragover');
+                if (e.dataTransfer.files.length > 0) {
+                    processFile(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    processFile(e.target.files[0]);
+                }
+            });
+        }
+
+        // Excelファイル処理
+        function processFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array', cellDates: true, dateNF: 'yyyy/mm/dd'});
+                    
+                    appState.workbook = workbook;
+                    
+                    // 「設定」シートがあれば医院情報を読み込む
+                    if (workbook.SheetNames.includes('設定')) {
+                        loadClinicSettingsFromExcel(workbook.Sheets['設定']);
+                    }
+                    
+                    // 「設定」以外の通常シートを抽出
+                    appState.sheets = workbook.SheetNames.filter(name => name !== '設定');
+                    
+                    if (appState.sheets.length === 0) {
+                        alert('有効な施設シートがExcel内にありません。');
+                        return;
+                    }
+
+                    // アプリ画面の表示切り替え
+                    document.getElementById('welcome-screen').style.display = 'none';
+                    document.getElementById('app-layout').style.display = 'flex';
+
+                    // 施設選択のドロップダウン構築
+                    const select = document.getElementById('facility-select');
+                    select.innerHTML = '';
+                    appState.sheets.forEach(name => {
+                        const opt = document.createElement('option');
+                        opt.value = name;
+                        opt.textContent = name;
+                        select.appendChild(opt);
+                    });
+
+                    appState.currentSheet = appState.sheets[0];
+                    loadSheetData(appState.currentSheet);
+
+                } catch (err) {
+                    console.error(err);
+                    alert('Excelファイルの読み込みに失敗しました。正しいフォーマットかご確認ください。');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Excelの設定シートから医院情報を読み込む
+        function loadClinicSettingsFromExcel(worksheet) {
+            const data = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+            data.forEach(row => {
+                if (row && row.length >= 2) {
+                    const key = String(row[0]).trim();
+                    const val = String(row[1]).trim();
+                    if (key === '医院名') appState.clinicInfo.name = val;
+                    if (key === '住所') appState.clinicInfo.addr = val;
+                    if (key === '担当者') appState.clinicInfo.sender = val;
+                    if (key === '電話番号') appState.clinicInfo.tel = val;
+                    if (key === 'FAX') appState.clinicInfo.fax = val;
+                }
+            });
+            // フォームの値を同期
+            document.getElementById('clinic-name').value = appState.clinicInfo.name;
+            document.getElementById('clinic-addr').value = appState.clinicInfo.addr;
+            document.getElementById('clinic-sender').value = appState.clinicInfo.sender;
+            document.getElementById('clinic-tel').value = appState.clinicInfo.tel;
+            document.getElementById('clinic-fax').value = appState.clinicInfo.fax;
+            updateHeaderClinicName();
+        }
+
+        // コントロール系のイベント定義
+        function setupControlEvents() {
+            document.getElementById('facility-select').addEventListener('change', (e) => {
+                appState.currentSheet = e.target.value;
+                loadSheetData(appState.currentSheet);
+            });
+
+            document.getElementById('visit-date').addEventListener('change', (e) => {
+                appState.selectedDate = e.target.value;
+                autoSelectPatientsByDate();
+            });
+
+            document.getElementById('start-time').addEventListener('change', (e) => {
+                appState.startTime = e.target.value;
+                calculateScheduleTimes();
+                updateReports();
+            });
+
+            document.getElementById('reselect-file-btn').addEventListener('click', () => {
+                if (confirm('別ファイルを選択しますか？ 現在の編集状態はリセットされます。')) {
+                    document.getElementById('app-layout').style.display = 'none';
+                    document.getElementById('welcome-screen').style.display = 'flex';
+                    document.getElementById('file-input').value = '';
+                    appState.workbook = null;
+                    appState.activePatients = [];
+                }
+            });
+        }
+
+        // 日付フォーマット変換ヘルパー
+        function formatDateString(val) {
+            if (!val) return '';
+            if (val instanceof Date) {
+                const y = val.getFullYear();
+                const m = String(val.getMonth() + 1).padStart(2, '0');
+                const d = String(val.getDate()).padStart(2, '0');
+                return `${y}/${m}/${d}`;
+            }
+            if (typeof val === 'string') {
+                const d = new Date(val);
+                if (!isNaN(d.getTime())) {
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, '0');
+                    const dStr = String(d.getDate()).padStart(2, '0');
+                    return `${y}/${m}/${dStr}`;
+                }
+                return val.trim();
+            }
+            return String(val);
+        }
+
+        // シートデータを読み込んで患者マスターを生成
+        function loadSheetData(sheetName) {
+            const worksheet = appState.workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, {defval: ''});
+
+            appState.patients = jsonData.map((row, idx) => {
+                const getVal = (keys) => {
+                    for (let k of keys) {
+                        if (row[k] !== undefined) return row[k];
+                    }
+                    return '';
+                };
+
+                return {
+                    id: `${sheetName}_${idx}`,
+                    originalIndex: idx, // 元のExcel行順序を保持
+                    room: String(getVal(['部屋番号', '部屋', 'Room'])).trim(),
+                    karteNo: String(getVal(['カルテNo', 'カルテナンバー', 'カルテ', 'Karte'])).trim(),
+                    name: String(getVal(['名前', '氏名', '患者名', 'Name'])).trim(),
+                    denture: String(getVal(['義歯', '義歯の有無', 'Denture'])).trim(),
+                    visits: [
+                        formatDateString(getVal(['1回目診察日', '1回目', '診察日1'])),
+                        formatDateString(getVal(['2回目診察日', '2回目', '診察日2'])),
+                        formatDateString(getVal(['3回目診察日', '3回目', '診察日3'])),
+                        formatDateString(getVal(['4回目診察日', '4回目', '診察日4']))
+                    ].filter(d => d !== ''),
+                    precautions: String(getVal(['注意事項', '注意', 'Precautions'])).trim(),
+                    memo: String(getVal(['備考', 'メモ', 'Memo'])).trim()
+                };
+            }).filter(p => p.name !== '');
+
+            document.getElementById('patient-count-badge').textContent = `${appState.patients.length}名登録`;
+            document.getElementById('setup-facility-title').textContent = `${sheetName} 患者一覧`;
+
+            autoSelectPatientsByDate();
+        }
+
+        // 日付が変わった時の処理
+        function autoSelectPatientsByDate() {
+            if (!appState.selectedDate) return;
+            
+            // 以前はここで日付が一致する患者を自動選択していましたが、
+            // 「実績」と「予定」が混同する原因となるため自動選択は廃止し、手動チェックのみとします。
+            appState.activePatients = [];
+
+            renderPatientTable();
+            renderSelectedList();
+            calculateScheduleTimes();
+            updateReports();
+        }
+
+        // 左側：患者一覧テーブルの描画
+        function renderPatientTable() {
+            const tbody = document.getElementById('patient-table-body');
+            tbody.innerHTML = '';
+
+            if (appState.patients.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="padding: 2rem; color: var(--text-muted);">データがありません。</td></tr>';
+                return;
+            }
+
+            const targetDateStr = formatDateString(new Date(appState.selectedDate));
+            const targetMonth = targetDateStr.substring(0, 7);
+
+            appState.patients.forEach((p, index) => {
+                const tr = document.createElement('tr');
+                
+                // 当月の実績かどうかを判定
+                const monthVisits = p.visits.filter(v => v.startsWith(targetMonth));
+                const hasVisit1ThisMonth = monthVisits.length > 0;
+                const hasVisit2ThisMonth = monthVisits.length > 1;
+                
+                // 当月すでに2回完了しているか
+                const isAlreadyFinishedBoth = monthVisits.length >= 2;
+                const isActive = appState.activePatients.some(ap => ap.karteNo === p.karteNo);
+
+                // 2回終了している人はグレーアウト
+                if (isAlreadyFinishedBoth) {
+                    tr.style.opacity = '0.55';
+                    tr.style.backgroundColor = '#f1f5f9';
+                }
+
+                // 実績ステータス表示
+                let historyBadgeHtml = '';
+                if (isAlreadyFinishedBoth) {
+                    historyBadgeHtml = '<span class="badge badge-success">月2回完了</span>';
+                } else if (hasVisit1ThisMonth) {
+                    historyBadgeHtml = `<span class="badge badge-primary">1回済 (${monthVisits[0].substring(5)})</span>`;
+                } else {
+                    historyBadgeHtml = '<span class="badge badge-danger">未訪問</span>';
+                }
+
+                // チェックボックス
+                const tdCheck = document.createElement('td');
+                tdCheck.className = 'checkbox-cell';
+                const chk = document.createElement('input');
+                chk.type = 'checkbox';
+                chk.className = 'patient-checkbox';
+                chk.checked = isActive;
+                chk.dataset.index = index;
+                
+                if (isAlreadyFinishedBoth) {
+                    chk.disabled = true; // 2回完了している人はチェック不可
+                } else {
+                    chk.addEventListener('click', (e) => {
+                        // Shiftキーによる範囲選択
+                        if (e.shiftKey && lastCheckedIndex !== -1) {
+                            const start = Math.min(lastCheckedIndex, index);
+                            const end = Math.max(lastCheckedIndex, index);
+                            const checkboxes = tbody.querySelectorAll('.patient-checkbox');
+                            
+                            for (let i = start; i <= end; i++) {
+                                const box = checkboxes[i];
+                                if (box && !box.disabled && box.checked !== chk.checked) {
+                                    box.checked = chk.checked;
+                                    const patientToToggle = appState.patients[i];
+                                    togglePatientActiveNoRender(patientToToggle, chk.checked, targetMonth);
+                                }
+                            }
+                            // 全体再描画
+                            renderSelectedList();
+                            calculateScheduleTimes();
+                            updateReports();
+                            document.getElementById('selected-count-badge').textContent = `${appState.activePatients.length}名選択`;
+                        } else {
+                            togglePatientActive(p, chk.checked);
+                        }
+                        lastCheckedIndex = index;
+                    });
+                }
+                tdCheck.appendChild(chk);
+                tr.appendChild(tdCheck);
+
+                const createTd = (text) => {
+                    const td = document.createElement('td');
+                    td.textContent = text || '-';
+                    return td;
+                };
+
+                tr.appendChild(createTd(p.room));
+                tr.appendChild(createTd(p.karteNo));
+                tr.appendChild(createTd(p.name));
+                tr.appendChild(createTd(p.denture));
+
+                const tdStatus = document.createElement('td');
+                tdStatus.innerHTML = historyBadgeHtml;
+                tr.appendChild(tdStatus);
+
+                const tdPre = createTd(p.precautions);
+                tdPre.style.maxWidth = '220px';
+                tdPre.style.overflow = 'hidden';
+                tdPre.style.textOverflow = 'ellipsis';
+                tdPre.style.whiteSpace = 'nowrap';
+                tr.appendChild(tdPre);
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        function togglePatientActive(patient, isChecked) {
+            const targetDateStr = formatDateString(new Date(appState.selectedDate));
+            const targetMonth = targetDateStr.substring(0, 7);
+            
+            togglePatientActiveNoRender(patient, isChecked, targetMonth);
+
+            renderSelectedList();
+            calculateScheduleTimes();
+            updateReports();
+            
+            document.getElementById('selected-count-badge').textContent = `${appState.activePatients.length}名選択`;
+        }
+
+        // 再描画を伴わない内部用トグル関数（一括操作用）
+        function togglePatientActiveNoRender(patient, isChecked, targetMonth) {
+            if (isChecked) {
+                if (!appState.activePatients.some(ap => ap.karteNo === patient.karteNo)) {
+                    const pCopy = {...patient};
+                    pCopy.status = 'completed'; // 初期値は実施(完了)
+                    
+                    const monthVisits = patient.visits.filter(v => v.startsWith(targetMonth));
+                    const hasVisit1ThisMonth = monthVisits.length > 0;
+                    const hasVisit2ThisMonth = monthVisits.length > 1;
+                    
+                    // 往診回数の自動判定
+                    if (hasVisit1ThisMonth && !hasVisit2ThisMonth) {
+                        pCopy.currentVisitCount = 2; 
+                    } else if (!hasVisit1ThisMonth && hasVisit2ThisMonth) {
+                        pCopy.currentVisitCount = 1; 
+                    } else {
+                        // 両方空欄、または当月ではない場合 → デフォルトは「1回目」
+                        pCopy.currentVisitCount = 1; 
+                    }
+                    
+                    // originalIndex順に挿入する
+                    const insertIdx = appState.activePatients.findIndex(ap => ap.originalIndex > pCopy.originalIndex);
+                    if (insertIdx === -1) {
+                        appState.activePatients.push(pCopy);
+                    } else {
+                        appState.activePatients.splice(insertIdx, 0, pCopy);
+                    }
+                }
+            } else {
+                appState.activePatients = appState.activePatients.filter(ap => ap.karteNo !== patient.karteNo);
+            }
+        }
+
+        // 一括選択アクション
+        function selectAllPatients() {
+            const targetDateStr = formatDateString(new Date(appState.selectedDate));
+            const targetMonth = targetDateStr.substring(0, 7);
+
+            appState.patients.forEach(p => {
+                const monthVisits = p.visits.filter(v => v.startsWith(targetMonth));
+                if (monthVisits.length < 2) {
+                    togglePatientActiveNoRender(p, true, targetMonth);
+                }
+            });
+            renderPatientTable();
+            renderSelectedList();
+            calculateScheduleTimes();
+            updateReports();
+        }
+
+        function deselectAllPatients() {
+            appState.activePatients = [];
+            renderPatientTable();
+            renderSelectedList();
+            calculateScheduleTimes();
+            updateReports();
+        }
+
+        function selectTopNPatients() {
+            const n = parseInt(document.getElementById('bulk-select-count').value, 10);
+            if (isNaN(n) || n <= 0) return;
+
+            const targetDateStr = formatDateString(new Date(appState.selectedDate));
+            const targetMonth = targetDateStr.substring(0, 7);
+
+            let selectedCount = 0;
+            appState.patients.forEach(p => {
+                const monthVisits = p.visits.filter(v => v.startsWith(targetMonth));
+                // 2回完了していない人を上から順にN名まで追加
+                if (monthVisits.length < 2) {
+                    if (selectedCount < n) {
+                        togglePatientActiveNoRender(p, true, targetMonth);
+                        selectedCount++;
+                    }
+                }
+            });
+
+            renderPatientTable();
+            renderSelectedList();
+            calculateScheduleTimes();
+            updateReports();
+        }
+
+        // 右側：選択済み並び替えリストの描画
+        function renderSelectedList() {
+            const container = document.getElementById('selected-list');
+            container.innerHTML = '';
+
+            if (appState.activePatients.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-list-msg">
+                        <i data-lucide="info" style="width: 36px; height: 36px; color: var(--text-muted);"></i>
+                        <span>本日の往診患者が選択されていません。<br>左の一覧からチェックを入れてください。</span>
+                    </div>
+                `;
+                initLucide();
+                return;
+            }
+
+            appState.activePatients.forEach((ap, idx) => {
+                const item = document.createElement('div');
+                // キャンセル状態の場合はスタイルを変える
+                const isCancelled = ap.status === 'cancelled';
+                item.className = `sortable-item ${isCancelled ? 'cancelled-item' : ''}`;
+                item.dataset.id = ap.id;
+                item.dataset.karte = ap.karteNo;
+
+                // 往診回数タイプ
+                const isSecondVisit = ap.currentVisitCount === 2;
+                const toggleBtnClass = isSecondVisit ? 'visit-type-btn v2' : 'visit-type-btn';
+                const toggleBtnText = isSecondVisit ? '衛生士のみ' : '医師＋衛生士';
+
+                // 完了・キャンセルステータス
+                const statusBtnClass = isCancelled ? 'status-toggle-btn cancelled' : 'status-toggle-btn';
+                const statusBtnText = isCancelled ? '❌ 不実施' : '✅ 実施';
+
+                item.innerHTML = `
+                    <div class="handle">
+                        <i data-lucide="grip-vertical" style="width: 20px; height: 20px;"></i>
+                    </div>
+                    <div class="item-info">
+                        <div class="item-name" style="${isCancelled ? 'text-decoration: line-through; color: var(--text-muted);' : ''}; font-size: 1.05rem; line-height: 1.3;">
+                            <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal; margin-bottom: 0.1rem;">${ap.room}号室</div>
+                            <div>${ap.name}</div>
+                        </div>
+                    </div>
+                    <div class="item-times" id="times-display-${ap.id}" style="font-size: 0.8rem; margin-right: 0.25rem;">
+                        <div>医師: ${isCancelled ? '不実施' : '計算中...'}</div>
+                        <div>衛生士: ${isCancelled ? '不実施' : '計算中...'}</div>
+                    </div>
+                    <div class="item-actions" style="display: flex; gap: 0.25rem; align-items: center;">
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            <!-- 実施・キャンセル切り替えボタン -->
+                            <button class="${statusBtnClass}" onclick="togglePatientStatus('${ap.karteNo}')" title="往診を実施したかどうかを切り替えます" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
+                                ${statusBtnText}
+                            </button>
+                            <!-- 回数切り替えボタン -->
+                            <button class="${toggleBtnClass}" onclick="toggleVisitCount('${ap.karteNo}')" ${isCancelled ? 'disabled' : ''} title="クリックで往診タイプを切り替え" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
+                                ${toggleBtnText}
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(item);
+            });
+
+            document.getElementById('selected-count-badge').textContent = `${appState.activePatients.length}名選択`;
+            initLucide();
+
+            // SortableJSの適用
+            new Sortable(container, {
+                handle: '.handle',
+                ghostClass: 'sortable-ghost',
+                animation: 150,
+                onEnd: () => {
+                    const items = container.querySelectorAll('.sortable-item');
+                    const newActiveList = [];
+                    items.forEach(item => {
+                        const karte = item.dataset.karte;
+                        const patient = appState.activePatients.find(ap => ap.karteNo === karte);
+                        if (patient) newActiveList.push(patient);
+                    });
+                    appState.activePatients = newActiveList;
+                    
+                    calculateScheduleTimes();
+                    updateReports();
+                }
+            });
+        }
+
+        // 実施・不実施の切り替え
+        function togglePatientStatus(karteNo) {
+            const patient = appState.activePatients.find(ap => ap.karteNo === karteNo);
+            if (patient) {
+                patient.status = patient.status === 'cancelled' ? 'completed' : 'cancelled';
+                renderSelectedList();
+                calculateScheduleTimes();
+                updateReports();
+            }
+        }
+
+        // 往診回数のトグル切り替え
+        function toggleVisitCount(karteNo) {
+            const patient = appState.activePatients.find(ap => ap.karteNo === karteNo);
+            if (patient) {
+                patient.currentVisitCount = patient.currentVisitCount === 2 ? 1 : 2;
+                renderSelectedList();
+                calculateScheduleTimes();
+                updateReports();
+            }
+        }
+
+        // スケジュール時間計算
+        function calculateScheduleTimes() {
+            if (appState.activePatients.length === 0) return;
+
+            let currentDocTime = timeToMinutes(appState.startTime); // 医師
+            let currentHygTime = timeToMinutes(appState.startTime); // 衛生士
+
+            appState.activePatients.forEach(p => {
+                const el = document.getElementById(`times-display-${p.id}`);
+                
+                // 不実施（キャンセル）の場合は時間を割り振らない
+                if (p.status === 'cancelled') {
+                    p.docTimeStr = '不実施';
+                    p.hygTimeStr = '不実施';
+                    if (el) {
+                        el.innerHTML = `
+                            <div style="color: var(--danger); text-decoration: line-through;">医師: 不実施</div>
+                            <div style="color: var(--danger); text-decoration: line-through;">衛生士: 不実施</div>
+                        `;
+                    }
+                    return;
+                }
+
+                let docStart = null;
+                let docEnd = null;
+                let hygStart = null;
+                let hygEnd = null;
+
+                if (p.currentVisitCount === 1) {
+                    // 1回目：医師(20分) + 衛生士(20分)
+                    docStart = currentDocTime;
+                    currentDocTime += 20;
+                    docEnd = currentDocTime;
+
+                    hygStart = Math.max(docEnd, currentHygTime);
+                    currentHygTime = hygStart + 20;
+                    hygEnd = currentHygTime;
+                } else {
+                    // 2回目：衛生士のみ(20分)
+                    docStart = null;
+                    docEnd = null;
+
+                    hygStart = currentHygTime;
+                    currentHygTime = hygStart + 20;
+                    hygEnd = currentHygTime;
+                }
+
+                p.docTimeStr = docStart !== null ? `${minutesToTime(docStart)} - ${minutesToTime(docEnd)}` : '-';
+                p.hygTimeStr = `${minutesToTime(hygStart)} - ${minutesToTime(hygEnd)}`;
+
+                if (el) {
+                    el.innerHTML = `
+                        <div>医師: <span class="font-bold" style="color: ${docStart !== null ? '#1e40af' : '#64748b'};">${p.docTimeStr}</span></div>
+                        <div>衛生士: <span class="font-bold" style="color: #059669;">${p.hygTimeStr}</span></div>
+                    `;
+                }
+            });
+        }
+
+        // 時間計算ユーティリティ
+        function timeToMinutes(timeStr) {
+            const parts = timeStr.split(':');
+            return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+        }
+
+        function minutesToTime(mins) {
+            const h = String(Math.floor(mins / 60) % 24).padStart(2, '0');
+            const m = String(mins % 60).padStart(2, '0');
+            return `${h}:${m}`;
+        }
+
+        // 各種レポート帳票の更新
+        function updateReports() {
+            const visitDateStr = appState.selectedDate ? appState.selectedDate.replace(/-/g, '/') : '-';
+            const visitDateJp = getJapaneseDate(appState.selectedDate);
+
+            // ================= 1. 往診スケジュール表 =================
+            document.getElementById('list-report-facility').textContent = `${appState.currentSheet} 往診スケジュール`;
+            document.getElementById('list-report-date').textContent = visitDateStr;
+
+            const listTbody = document.getElementById('print-list-tbody');
+            listTbody.innerHTML = '';
+
+            if (appState.activePatients.length === 0) {
+                listTbody.innerHTML = '<tr><td colspan="8" class="text-center" style="padding: 2rem;">往診予定者が選択されていません。</td></tr>';
+            } else {
+                appState.activePatients.forEach(p => {
+                    const tr = document.createElement('tr');
+                    
+                    // キャンセルの人は印刷スケジュールから除外、または取消線を引く（ここでは除外せず取消線で表示）
+                    const isCancelled = p.status === 'cancelled';
+                    if (isCancelled) {
+                        tr.style.textDecoration = 'line-through';
+                        tr.style.color = '#777';
+                        tr.style.backgroundColor = '#fafafa';
+                    }
+
+                    const createCell = (text, center = false, bold = false) => {
+                        const td = document.createElement('td');
+                        td.textContent = text || '';
+                        if (center) td.className = 'text-center';
+                        if (bold) td.style.fontWeight = 'bold';
+                        return td;
+                    };
+
+                    tr.appendChild(createCell(p.room, true));
+                    tr.appendChild(createCell(p.karteNo, true));
+                    tr.appendChild(createCell(p.name, false, true));
+                    tr.appendChild(createCell(p.denture, true));
+                    tr.appendChild(createCell(isCancelled ? '不実施' : p.docTimeStr, true, p.currentVisitCount === 1 && !isCancelled));
+                    tr.appendChild(createCell(isCancelled ? '不実施' : p.hygTimeStr, true, !isCancelled));
+                    
+                    const tdPre = createCell(p.precautions);
+                    tdPre.style.fontSize = '8pt';
+                    tr.appendChild(tdPre);
+                    
+                    tr.appendChild(createCell('')); // 備考手書き欄
+
+                    listTbody.appendChild(tr);
+                });
+                
+                adjustRowHeightForA4(listTbody, appState.activePatients.length);
+            }
+
+            // ================= 2. FAX送信表 =================
+            document.getElementById('fax-target-facility').textContent = `${appState.currentSheet} 御中`;
+            document.getElementById('fax-clinic-name').textContent = appState.clinicInfo.name;
+            document.getElementById('fax-clinic-addr').textContent = appState.clinicInfo.addr;
+            document.getElementById('fax-clinic-sender').textContent = appState.clinicInfo.sender;
+            document.getElementById('fax-clinic-tel').textContent = appState.clinicInfo.tel;
+            document.getElementById('fax-clinic-fax').textContent = appState.clinicInfo.fax;
+            
+            const todayStr = getJapaneseDate(new Date());
+            document.getElementById('fax-send-date').textContent = todayStr;
+            document.getElementById('fax-visit-date-str').textContent = visitDateJp;
+            
+            // FAX予定者は、実施予定の人（キャンセル以外）のみカウント
+            const activeList = appState.activePatients.filter(ap => ap.status !== 'cancelled');
+            document.getElementById('fax-patient-count').textContent = activeList.length;
+
+            const faxGrid = document.getElementById('fax-patients-grid');
+            faxGrid.innerHTML = '';
+
+            if (activeList.length === 0) {
+                faxGrid.innerHTML = '<div style="grid-column: span 4; text-align: center; padding: 2rem; color: #666;">予定者がいません</div>';
+            } else {
+                activeList.forEach(p => {
+                    const cell = document.createElement('div');
+                    cell.className = 'fax-patient-cell';
+                    cell.textContent = `${p.name} 様`;
+                    faxGrid.appendChild(cell);
+                });
+            }
+
+            // ================= 3. 往診実績回数表 =================
+            document.getElementById('times-report-facility').textContent = `${appState.currentSheet} 往診回数集計票`;
+            document.getElementById('times-report-date').textContent = visitDateStr;
+            const targetMonth = visitDateStr.substring(0, 7);
+
+            const timesTbody = document.getElementById('print-times-tbody');
+            timesTbody.innerHTML = '';
+
+            if (appState.patients.length === 0) {
+                timesTbody.innerHTML = '<tr><td colspan="5" class="text-center" style="padding: 2rem;">データがありません。</td></tr>';
+            } else {
+                appState.patients.forEach(p => {
+                    const tr = document.createElement('tr');
+                    
+                    let monthVisits = p.visits.filter(v => v.startsWith(targetMonth));
+                    let v1 = monthVisits.length > 0 ? monthVisits[0] : null;
+                    let v2 = monthVisits.length > 1 ? monthVisits[1] : null;
+
+                    // 本日往診した人のうち、ステータスが「実施(completed)」である場合のみ実績に算入
+                    const activeP = appState.activePatients.find(ap => ap.karteNo === p.karteNo && ap.status === 'completed');
+                    if (activeP) {
+                        const todayFormat = visitDateStr;
+                        if (activeP.currentVisitCount === 2) {
+                            if (v1 !== todayFormat) v2 = todayFormat;
+                        } else {
+                            v1 = todayFormat;
+                        }
+                    }
+
+                    let countText = '未訪問';
+                    let badgeClass = 'badge-danger';
+                    let historyDetail = '-';
+
+                    if (v1 && v2) {
+                        countText = '2回（完了）';
+                        badgeClass = 'badge-success';
+                        historyDetail = `① ${v1.substring(5)}  /  ② ${v2.substring(5)}`;
+                    } else if (v1) {
+                        countText = '1回';
+                        badgeClass = 'badge-primary';
+                        historyDetail = `① ${v1.substring(5)}`;
+                    } else if (v2) {
+                        countText = '1回';
+                        badgeClass = 'badge-primary';
+                        historyDetail = `② ${v2.substring(5)}`;
+                    }
+
+                    const createCell = (text, center = false) => {
+                        const td = document.createElement('td');
+                        td.textContent = text || '';
+                        if (center) td.className = 'text-center';
+                        return td;
+                    };
+
+                    tr.appendChild(createCell(p.room, true));
+                    tr.appendChild(createCell(p.karteNo, true));
+                    tr.appendChild(createCell(p.name, false));
+                    
+                    const tdCount = document.createElement('td');
+                    tdCount.className = 'text-center';
+                    tdCount.innerHTML = `<span class="badge ${badgeClass}">${countText}</span>`;
+                    tr.appendChild(tdCount);
+
+                    tr.appendChild(createCell(historyDetail, true));
+
+                    timesTbody.appendChild(tr);
+                });
+            }
+        }
+
+        // 実績データを書き戻して、更新版のExcelファイルをエクスポートする
+        function exportUpdatedExcel() {
+            if (!appState.workbook) return;
+            
+            const targetDateStr = formatDateString(new Date(appState.selectedDate));
+            const visitDateSlash = targetDateStr; // "YYYY/MM/DD"
+
+            // 1. 各施設シートの日付を更新
+            appState.sheets.forEach(sheetName => {
+                const ws = appState.workbook.Sheets[sheetName];
+                const range = XLSX.utils.decode_range(ws['!ref']);
+                
+                // カラムの列インデックスを探す
+                let colKarteIdx = -1;
+                let colVisitIdxs = [];
+
+                // 1行目(ヘッダー)を走査
+                for (let c = range.s.c; c <= range.e.c; ++c) {
+                    const addr = XLSX.utils.encode_cell({r: range.s.r, c: c});
+                    const cell = ws[addr];
+                    if (cell) {
+                        const val = String(cell.v).trim();
+                        if (val === 'カルテNo' || val === 'カルテナンバー' || val === 'カルテ') colKarteIdx = c;
+                        if (['1回目診察日', '1回目', '診察日1', '2回目診察日', '2回目', '診察日2', '3回目診察日', '3回目', '診察日3', '4回目診察日', '4回目', '診察日4'].includes(val)) {
+                            colVisitIdxs.push(c);
+                        }
+                    }
+                }
+
+                if (colKarteIdx === -1 || colVisitIdxs.length === 0) {
+                    console.warn(`Required columns not found in sheet: ${sheetName}`);
+                    return;
+                }
+
+                // 診察日列を左から右の順にソート
+                colVisitIdxs.sort((a,b) => a - b);
+
+                // データ行を走査して更新
+                for (let r = range.s.r + 1; r <= range.e.r; ++r) {
+                    const karteAddr = XLSX.utils.encode_cell({r: r, c: colKarteIdx});
+                    const karteCell = ws[karteAddr];
+                    if (!karteCell) continue;
+
+                    const karteNo = String(karteCell.v).trim();
+                    
+                    // 本日の activePatients の中から該当患者を探す
+                    const activeP = appState.activePatients.find(ap => ap.karteNo === karteNo && ap.id.startsWith(sheetName));
+
+                    if (activeP) {
+                        // 患者の現在の全訪問日リスト（未編集状態）を取得
+                        let currentVisits = activeP.visits ? [...activeP.visits] : [];
+                        
+                        if (activeP.status === 'completed') {
+                            if (!currentVisits.includes(visitDateSlash)) {
+                                currentVisits.push(visitDateSlash);
+                            }
+                        } else if (activeP.status === 'cancelled') {
+                            currentVisits = currentVisits.filter(v => v !== visitDateSlash);
+                        }
+                        
+                        // 日付順にソートして、列数分（最大4つ等）の最新日付のみ残す
+                        currentVisits.sort();
+                        if (currentVisits.length > colVisitIdxs.length) {
+                            currentVisits = currentVisits.slice(currentVisits.length - colVisitIdxs.length);
+                        }
+
+                        // セルに書き込み
+                        colVisitIdxs.forEach((colIdx, i) => {
+                            const cellAddr = XLSX.utils.encode_cell({r: r, c: colIdx});
+                            writeCell(ws, cellAddr, currentVisits[i] || '');
+                        });
+                    }
+                }
+            });
+
+            // 2. 「設定」シートの作成または更新 (歯科情報の永続化)
+            const settingsSheetName = '設定';
+            const settingsData = [
+                ['項目', '設定値'],
+                ['医院名', appState.clinicInfo.name],
+                ['住所', appState.clinicInfo.addr],
+                ['担当者', appState.clinicInfo.sender],
+                ['電話番号', appState.clinicInfo.tel],
+                ['FAX', appState.clinicInfo.fax]
+            ];
+            
+            const wsSettings = XLSX.utils.aoa_to_sheet(settingsData);
+            
+            // スタイルはつかないが、列幅だけ簡易調整
+            wsSettings['!cols'] = [{wch: 15}, {wch: 40}];
+            
+            // 既存の設定シートがあれば差し替え、無ければ追加
+            if (appState.workbook.SheetNames.includes(settingsSheetName)) {
+                appState.workbook.Sheets[settingsSheetName] = wsSettings;
+            } else {
+                appState.workbook.SheetNames.push(settingsSheetName);
+                appState.workbook.Sheets[settingsSheetName] = wsSettings;
+            }
+
+            // 3. ダウンロードエクスポート
+            const filename = `往診データベース_${visitDateSlash.replace(/\//g, '')}.xlsx`;
+            XLSX.writeFile(appState.workbook, filename);
+            
+            alert(`往診実績を設定シートと共に保存しました。\nダウンロードされたファイル:「${filename}」で元のファイルを上書きしてください。`);
+            
+            // 元のマスター(patients)を再読込して画面を最新状態に更新
+            loadSheetData(appState.currentSheet);
+        }
+
+        // セルの書き込みヘルパー（書式等を保護し値だけ更新）
+        function writeCell(ws, cellAddress, val) {
+            if (!ws[cellAddress]) {
+                ws[cellAddress] = { t: 's', v: '' };
+            }
+            ws[cellAddress].v = val;
+            ws[cellAddress].t = val ? 's' : 'z'; // 空文字列なら型をz(空)にする
+        }
+
+        // 日本語日付
+        function getJapaneseDate(dateVal) {
+            if (!dateVal) return '-';
+            const date = new Date(dateVal);
+            if (isNaN(date.getTime())) return String(dateVal);
+            
+            const wdays = ['日', '月', '火', '水', '木', '金', '土'];
+            const y = date.getFullYear();
+            const m = date.getMonth() + 1;
+            const d = date.getDate();
+            const w = wdays[date.getDay()];
+            
+            return `${y}年${m}月${d}日 (${w})`;
+        }
+
+        // A4印刷用行高調整
+        function adjustRowHeightForA4(tbody, count) {
+            const rows = tbody.querySelectorAll('tr');
+            let paddingSize = '4px 6px';
+            let fontSize = '8.5pt';
+
+            if (count > 35) {
+                paddingSize = '1.5px 3px';
+                fontSize = '7.5pt';
+            } else if (count > 25) {
+                paddingSize = '2.5px 4px';
+                fontSize = '8pt';
+            } else {
+                paddingSize = '5px 8px';
+                fontSize = '9.5pt';
+            }
+
+            rows.forEach(row => {
+                row.style.fontSize = fontSize;
+                const cells = row.querySelectorAll('td');
+                cells.forEach(c => {
+                    c.style.padding = paddingSize;
+                });
+            });
+        }
+    </script>
+</body>
+</html>
