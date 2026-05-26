@@ -1075,6 +1075,9 @@
                 font-size: 0.8rem !important;
                 border-radius: 0.35rem;
             }
+            .clinic-info-summary {
+                display: none !important;
+            }
         }
 
         /* 画面印刷用のメディアクエリ */
@@ -1132,6 +1135,114 @@
                 margin: 10mm;
             }
         }
+
+        /* ヘルプモーダルのスタイル */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 2000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+
+        .modal-card {
+            background-color: var(--white-card);
+            border-radius: 1rem;
+            width: 100%;
+            max-width: 650px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+            animation: modalFadeIn 0.25s ease;
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .modal-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #fafafa;
+        }
+
+        .modal-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: var(--text-dark);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .modal-close-btn {
+            background: none;
+            border: none;
+            font-size: 1.75rem;
+            font-weight: 300;
+            color: var(--text-muted);
+            cursor: pointer;
+            line-height: 1;
+            padding: 0.25rem;
+            transition: color 0.2s;
+        }
+
+        .modal-close-btn:hover {
+            color: var(--danger);
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .modal-body h4 {
+            margin-top: 1.25rem;
+            margin-bottom: 0.5rem;
+            color: var(--primary);
+            font-size: 1rem;
+            font-weight: 700;
+            border-left: 4px solid var(--primary);
+            padding-left: 0.5rem;
+        }
+
+        .modal-body p {
+            margin-bottom: 0.75rem;
+            color: var(--text-dark);
+        }
+
+        .modal-body ol {
+            margin-left: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .modal-body li {
+            margin-bottom: 0.5rem;
+        }
+
+        .modal-body code {
+            background-color: var(--light-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 0.25rem;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -1143,6 +1254,10 @@
             <h1>歯科往診スケジュール作成</h1>
         </div>
         <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <button class="btn btn-secondary" id="help-toggle-btn" style="padding: 0.45rem 0.75rem; background-color: #1e293b; border-color: #334155; color: white; display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.9rem;">
+                <i data-lucide="help-circle" style="width: 18px; height: 18px; color: #3b82f6;"></i>
+                <span>使い方</span>
+            </button>
             <div class="clinic-info-summary" id="header-clinic-name">
                 歯科医院情報未登録
             </div>
@@ -1544,6 +1659,7 @@
             setupTabEvents();
             setupControlEvents();
             setupMobileEvents();
+            setupHelpEvents();
             
             // 今日の日付をデフォルト設定
             const today = new Date().toISOString().split('T')[0];
@@ -2606,6 +2722,117 @@
             const badge2 = document.getElementById('subtab-selected-badge');
             if (badge2) badge2.textContent = count;
         }
+
+        // 使い方ヘルプモーダルの開閉制御
+        function setupHelpEvents() {
+            const helpModal = document.getElementById('help-modal');
+            const helpBtn = document.getElementById('help-toggle-btn');
+            const helpCloseBtn = document.getElementById('help-modal-close-btn');
+
+            if (helpBtn && helpModal) {
+                helpBtn.addEventListener('click', () => {
+                    helpModal.style.display = 'flex';
+                });
+            }
+
+            const closeHelpModal = () => {
+                if (helpModal) helpModal.style.display = 'none';
+            };
+
+            if (helpCloseBtn) helpCloseBtn.addEventListener('click', closeHelpModal);
+            if (helpModal) {
+                helpModal.addEventListener('click', (e) => {
+                    if (e.target === helpModal) closeHelpModal();
+                });
+            }
+        }
     </script>
+
+    <!-- 使い方ヘルプモーダル -->
+    <div class="modal-overlay" id="help-modal" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <i data-lucide="help-circle" style="width: 24px; height: 24px; color: var(--primary);"></i>
+                    歯科往診スケジュール作成ツールの使い方
+                </h3>
+                <button class="modal-close-btn" id="help-modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>このツールは、Excelデータから往診（訪問診療）のスケジュールを作成し、印刷・保存するためのアプリです。</p>
+                
+                <h4>① Excelファイルを読み込む</h4>
+                <p>最初の画面にある点線の四角い枠をクリックして、往診用のExcelファイルを選択します。パソコンの場合はファイルを直接枠内にドラッグ＆ドロップしても読み込めます。</p>
+                
+                <!-- イラスト（Step 1） -->
+                <div style="display: flex; justify-content: center; margin: 1rem 0;">
+                    <div style="border: 2px dashed var(--primary); padding: 1.25rem; border-radius: 0.75rem; text-align: center; background-color: var(--primary-light); width: 85%; max-width: 320px; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
+                        <i data-lucide="file-spreadsheet" style="width: 38px; height: 38px; color: var(--primary);"></i>
+                        <div style="font-size: 0.8rem; font-weight: bold; color: var(--primary-dark);">往診データベース.xlsx</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">枠内にファイルをドロップ！</div>
+                    </div>
+                </div>
+                
+                <h4>② スケジュールを作成する</h4>
+                <ol>
+                    <li>左側のメニューで<strong>「対象施設」</strong>を選び、<strong>「往診日」「開始時間」</strong>や同行する<strong>「医師」「衛生士」</strong>を入力します。</li>
+                    <li>左側の<strong>「患者一覧」</strong>で、今日往診する患者さんのチェックボックスにチェックを入れます。</li>
+                    <li>右側の<strong>「本日の往診スケジュール」</strong>にチェックした患者さんが追加されます。カードの左側（三本線マーク）をドラッグして上下に動かすことで、<strong>訪問する順番を並び替え</strong>できます。</li>
+                    <li>各患者さんの「実施/不実施」や「往診タイプ」もクリックして切り替えられます。</li>
+                </ol>
+                
+                <!-- イラスト（Step 2） -->
+                <div style="display: flex; gap: 0.75rem; justify-content: center; margin: 1rem 0; flex-wrap: wrap; max-width: 480px; margin-left: auto; margin-right: auto;">
+                    <div style="border: 1px solid var(--border); padding: 0.75rem; border-radius: 0.6rem; background-color: #fafafa; flex: 1; min-width: 140px; text-align: center;">
+                        <div style="font-size: 0.75rem; font-weight: bold; margin-bottom: 0.4rem; color: var(--text-dark);">1. 患者を選択</div>
+                        <div style="display: inline-flex; align-items: center; gap: 0.25rem; background: white; padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 0.25rem; font-size: 0.8rem; box-shadow: var(--shadow-sm);">
+                            <i data-lucide="check-square" style="width: 14px; height: 14px; color: var(--primary);"></i> 101 山田太郎
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.25rem; font-weight: bold;">➔</div>
+                    <div style="border: 1px solid var(--border); padding: 0.75rem; border-radius: 0.6rem; background-color: #fafafa; flex: 1; min-width: 140px; text-align: center;">
+                        <div style="font-size: 0.75rem; font-weight: bold; margin-bottom: 0.4rem; color: var(--text-dark);">2. ドラッグして順序変更</div>
+                        <div style="display: inline-flex; align-items: center; gap: 0.25rem; background: white; padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 0.25rem; font-size: 0.8rem; border-left: 3px solid var(--primary); box-shadow: var(--shadow-sm);">
+                            <i data-lucide="grip-vertical" style="width: 14px; height: 14px; color: #94a3b8;"></i> 山田太郎
+                        </div>
+                    </div>
+                </div>
+                
+                <h4>③ 印刷する（A4サイズ）</h4>
+                <p>画面上部のタブから「② 往診リスト印刷」または「③ FAX送信表印刷」を開き、<strong>「このリストを印刷」</strong>ボタンを押すと、自動的にA4用紙に最適化された状態で印刷が開始されます。</p>
+                
+                <!-- イラスト（Step 3） -->
+                <div style="display: flex; justify-content: center; margin: 1rem 0;">
+                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1.25rem; border: 1px solid var(--border); border-radius: 0.75rem; background-color: #fafafa; width: 85%; max-width: 320px; justify-content: center;">
+                        <i data-lucide="printer" style="width: 28px; height: 28px; color: var(--text-dark);"></i>
+                        <span style="font-size: 1.25rem; color: var(--text-muted);">➔</span>
+                        <div style="border: 2px solid #ccc; width: 34px; height: 44px; background: white; box-shadow: 2px 2px 4px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-around; padding: 4px; border-radius: 2px;">
+                            <div style="height: 2px; background: #94a3b8; width: 80%;"></div>
+                            <div style="height: 2px; background: #cbd5e1; width: 100%;"></div>
+                            <div style="height: 2px; background: #cbd5e1; width: 60%;"></div>
+                        </div>
+                        <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-dark); margin-left: 0.25rem;">A4用紙に印刷</div>
+                    </div>
+                </div>
+                
+                <h4>④ 実績を保存する（とても重要）</h4>
+                <p>往診が終わったら「④ 往診回数表印刷」タブを開き、緑色の<strong>「結果をデータベースへ保存 (Excel出力)」</strong>ボタンを押します。ダウンロードされた新しいファイルで元のファイルを上書き保存（差し替え）してください。これで往診履歴が自動で更新されます。</p>
+                
+                <!-- イラスト（Step 4） -->
+                <div style="display: flex; justify-content: center; margin: 1rem 0;">
+                    <div style="display: flex; flex-direction: column; align-items: center; gap: 0.35rem; padding: 0.75rem 1.5rem; border: 1px solid #10b981; border-radius: 0.75rem; background-color: #ecfdf5; color: #065f46; width: 85%; max-width: 320px; box-shadow: var(--shadow-sm);">
+                        <i data-lucide="download" style="width: 24px; height: 24px; color: #10b981;"></i>
+                        <span style="font-size: 0.85rem; font-weight: bold;">結果をデータベースへ保存</span>
+                        <div style="font-size: 0.7rem; color: #047857;">Excelファイルを上書き保存して完了！</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 1.5rem; padding: 1rem; background-color: var(--primary-light); border-left: 4px solid var(--primary); border-radius: 0.5rem; font-size: 0.85rem; color: var(--primary-dark);">
+                    <strong>🔒 個人情報について：</strong><br>
+                    読み込んだExcelデータは、あなたのパソコンやスマートフォンのブラウザの中だけで安全に処理されており、インターネット上のサーバーに送信されることは一切ありません。外部への情報漏洩の心配はなく安全にご利用いただけます。
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
