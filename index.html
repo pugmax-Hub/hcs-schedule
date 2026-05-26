@@ -844,21 +844,110 @@
             padding: 0.75rem 1.5rem;
         }
 
+        /* モバイル用の汎用非表示・表示クラス */
+        .mobile-only-flex {
+            display: none !important;
+        }
+        .mobile-only-block {
+            display: none !important;
+        }
+        .mobile-only-inline {
+            display: none !important;
+        }
+
+        /* モバイル用サブタブボタンのスタイル（PC版では非表示） */
+        .mobile-subtabs {
+            margin-bottom: 0.75rem;
+            width: 100%;
+        }
+        .subtab-btn {
+            background-color: var(--border-light);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+            outline: none;
+        }
+        .subtab-btn.active {
+            background-color: var(--primary) !important;
+            color: white !important;
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
+        }
+
         /* スマホ用レスポンシブデザイン */
         @media (max-width: 768px) {
+            .mobile-only-flex {
+                display: inline-flex !important;
+            }
+            .mobile-only-block {
+                display: block !important;
+            }
+            .mobile-only-inline {
+                display: inline-block !important;
+            }
+
             .app-layout {
+                position: relative;
                 flex-direction: column;
             }
+
+            /* サイドバーをスライドドロワー化 */
             .sidebar {
-                width: 100%;
-                border-right: none;
-                border-bottom: 1px solid var(--border);
+                position: fixed !important;
+                top: 0;
+                left: -340px;
+                height: 100vh !important;
+                width: 300px !important;
+                z-index: 1000 !important;
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                box-shadow: 5px 0 25px rgba(0, 0, 0, 0.3);
+                border-right: 1px solid var(--border);
+                border-bottom: none;
+                padding: 1.25rem !important;
             }
+            .sidebar.open {
+                transform: translateX(340px);
+            }
+
+            /* ドロワーの背景オーバーレイ */
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background-color: rgba(0, 0, 0, 0.4);
+                backdrop-filter: blur(2px);
+                z-index: 999;
+            }
+            .sidebar-overlay.open {
+                display: block;
+            }
+
             .setup-grid {
-                grid-template-columns: 1fr;
+                display: flex !important;
+                flex-direction: column;
+                height: auto;
+                gap: 1rem;
             }
+
+            /* スマホで片方のパネルだけを表示するための制御 */
+            #panel-patients-card, #panel-schedule-card {
+                display: none !important;
+            }
+            #panel-patients-card.mobile-active, #panel-schedule-card.mobile-active {
+                display: flex !important;
+            }
+
+            .panel-card {
+                max-height: calc(100vh - 200px) !important;
+                height: calc(100vh - 200px) !important;
+            }
+
             .tab-bar {
                 flex-wrap: wrap;
+                padding: 0 1rem !important;
+                gap: 0.5rem;
             }
             .tab-btn {
                 flex: 1 1 45%;
@@ -871,6 +960,28 @@
             }
             .panel-body {
                 overflow-x: auto;
+            }
+
+            /* テーブルの特定列をスマホで非表示 */
+            .col-karte, .col-denture, .col-pre {
+                display: none !important;
+            }
+
+            /* スケジュールリストアイテムのコンパクト化 */
+            .sortable-item {
+                padding: 0.6rem !important;
+                gap: 0.4rem !important;
+            }
+            .item-times {
+                min-width: 100px !important;
+                padding: 0.3rem 0.4rem !important;
+                font-size: 0.75rem !important;
+            }
+            .item-name {
+                font-size: 0.9rem !important;
+            }
+            .item-times div {
+                white-space: nowrap;
             }
         }
 
@@ -939,8 +1050,14 @@
             <i data-lucide="clipboard-list" style="width: 30px; height: 30px; color: #3b82f6;"></i>
             <h1>歯科往診スケジュール作成</h1>
         </div>
-        <div class="clinic-info-summary" id="header-clinic-name">
-            歯科医院情報未登録
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <div class="clinic-info-summary" id="header-clinic-name">
+                歯科医院情報未登録
+            </div>
+            <button class="mobile-sidebar-toggle btn btn-secondary mobile-only-flex" id="sidebar-toggle-btn" style="padding: 0.5rem; background-color: #1e293b; border-color: #334155; color: white;">
+                <i data-lucide="settings" style="width: 20px; height: 20px;"></i>
+                <span>設定</span>
+            </button>
         </div>
     </header>
 
@@ -960,7 +1077,7 @@
         <div style="margin-top: 2.5rem; max-width: 650px; text-align: left; background: var(--white-card); padding: 2rem; border-radius: 1rem; border: 1px solid var(--border); box-shadow: var(--shadow);">
             <h3 style="margin-bottom: 0.75rem; color: var(--primary); font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
                 <i data-lucide="help-circle" style="width: 20px; height: 20px;"></i>
-                データベースExcelの推奨レイアウト
+                データベースExcel of 推奨レイアウト
             </h3>
             <p style="font-size: 0.9rem; line-height: 1.6; color: var(--text-dark);">
                 Excelファイル内に、施設名（例: **「鴻巣フラワーパレス」**、**「川里苑」**など）ごとにシートを作成します。<br>
@@ -974,8 +1091,18 @@
 
     <!-- アプリメイン画面 -->
     <div class="app-layout no-print" id="app-layout" style="display: none;">
+        <!-- スマホ設定用ドロワー背景オーバーレイ -->
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
         <!-- 左側サイドバー（コントロール） -->
         <aside class="sidebar">
+            <!-- スマホ用サイドバーヘッダー（クローズボタン） -->
+            <div class="sidebar-header mobile-only-flex" style="justify-content: space-between; align-items: center; margin-bottom: 0.5rem; border-bottom: 1px solid #334155; padding-bottom: 0.5rem; width: 100%;">
+                <span style="font-weight: bold; font-size: 1rem; color: #fff;">設定・メニュー</span>
+                <button class="btn btn-secondary" id="sidebar-close-btn" style="padding: 0.25rem 0.5rem; font-size: 0.85rem; border: none; background: transparent; color: #94a3b8;">
+                    <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+                </button>
+            </div>
             <div class="sidebar-section">
                 <label for="facility-select">対象施設</label>
                 <select id="facility-select" class="select-input">
@@ -1058,9 +1185,20 @@
 
             <!-- ① メンバー設定タブ -->
             <div class="tab-content active" id="setup-tab" style="height: 100%;">
+                <!-- モバイル用サブタブ切り替えボタン -->
+                <div class="mobile-subtabs mobile-only-flex" style="width: 100%; display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                    <button class="subtab-btn active btn" id="subtab-patients-btn" style="flex: 1; padding: 0.75rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.25rem;">
+                        <i data-lucide="users" style="width: 16px; height: 16px;"></i> 患者一覧
+                    </button>
+                    <button class="subtab-btn btn" id="subtab-schedule-btn" style="flex: 1; padding: 0.75rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.25rem;">
+                        <i data-lucide="calendar" style="width: 16px; height: 16px;"></i> 今日の予定
+                        <span class="badge badge-success" id="subtab-selected-badge" style="font-size: 0.75rem; padding: 0.1rem 0.35rem; line-height: 1;">0</span>
+                    </button>
+                </div>
+
                 <div class="setup-grid">
                     <!-- 左カラム：施設患者一覧 -->
-                    <div class="panel-card">
+                    <div class="panel-card mobile-active" id="panel-patients-card">
                         <div class="panel-header">
                             <h2 class="panel-title">
                                 <i data-lucide="users" style="width: 20px; height: 20px; color: var(--primary);"></i>
@@ -1091,11 +1229,11 @@
                                     <tr>
                                         <th class="checkbox-cell">選択</th>
                                         <th>部屋</th>
-                                        <th>カルテNo</th>
+                                        <th class="col-karte">カルテNo</th>
                                         <th>名前</th>
-                                        <th>義歯</th>
+                                        <th class="col-denture">義歯</th>
                                         <th>当月実績</th>
-                                        <th>注意事項</th>
+                                        <th class="col-pre">注意事項</th>
                                     </tr>
                                 </thead>
                                 <tbody id="patient-table-body">
@@ -1106,7 +1244,7 @@
                     </div>
 
                     <!-- 右カラム：今日のスケジュール（並び替え） -->
-                    <div class="panel-card">
+                    <div class="panel-card" id="panel-schedule-card">
                         <div class="panel-header">
                             <h2 class="panel-title">
                                 <i data-lucide="arrow-up-down" style="width: 20px; height: 20px; color: var(--secondary);"></i>
@@ -1313,6 +1451,7 @@
             setupClinicSettings();
             setupTabEvents();
             setupControlEvents();
+            setupMobileEvents();
             
             // 今日の日付をデフォルト設定
             const today = new Date().toISOString().split('T')[0];
@@ -1676,7 +1815,7 @@
                             renderSelectedList();
                             calculateScheduleTimes();
                             updateReports();
-                            document.getElementById('selected-count-badge').textContent = `${appState.activePatients.length}名選択`;
+                            updateSelectedCountBadges();
                         } else {
                             togglePatientActive(p, chk.checked);
                         }
@@ -1686,22 +1825,39 @@
                 tdCheck.appendChild(chk);
                 tr.appendChild(tdCheck);
 
-                const createTd = (text) => {
+                const createTd = (text, className) => {
                     const td = document.createElement('td');
                     td.textContent = text || '-';
+                    if (className) td.className = className;
                     return td;
                 };
 
                 tr.appendChild(createTd(p.room));
-                tr.appendChild(createTd(p.karteNo));
-                tr.appendChild(createTd(p.name));
-                tr.appendChild(createTd(p.denture));
+                tr.appendChild(createTd(p.karteNo, 'col-karte'));
+                
+                // 名前セル（モバイル時は名前の下に義歯や注意事項をバッジとして表示）
+                const tdName = document.createElement('td');
+                let nameHtml = `<div style="font-weight: 700; color: var(--text-dark);">${p.name || '-'}</div>`;
+                let mobileSubHtml = '';
+                if (p.denture && p.denture !== '-') {
+                    mobileSubHtml += `<span class="mobile-only-inline badge badge-secondary" style="font-size: 0.7rem; margin-right: 0.25rem; padding: 0.1rem 0.3rem;">義歯</span>`;
+                }
+                if (p.precautions && p.precautions !== '-') {
+                    mobileSubHtml += `<span class="mobile-only-inline badge badge-danger" style="font-size: 0.7rem; padding: 0.1rem 0.3rem; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.precautions}">⚠️ ${p.precautions}</span>`;
+                }
+                if (mobileSubHtml) {
+                    nameHtml += `<div class="mobile-only-block" style="margin-top: 0.25rem; line-height: 1.2;">${mobileSubHtml}</div>`;
+                }
+                tdName.innerHTML = nameHtml;
+                tr.appendChild(tdName);
+
+                tr.appendChild(createTd(p.denture, 'col-denture'));
 
                 const tdStatus = document.createElement('td');
                 tdStatus.innerHTML = historyBadgeHtml;
                 tr.appendChild(tdStatus);
 
-                const tdPre = createTd(p.precautions);
+                const tdPre = createTd(p.precautions, 'col-pre');
                 tdPre.style.maxWidth = '220px';
                 tdPre.style.overflow = 'hidden';
                 tdPre.style.textOverflow = 'ellipsis';
@@ -1721,8 +1877,7 @@
             renderSelectedList();
             calculateScheduleTimes();
             updateReports();
-            
-            document.getElementById('selected-count-badge').textContent = `${appState.activePatients.length}名選択`;
+            updateSelectedCountBadges();
         }
 
         // 再描画を伴わない内部用トグル関数（一括操作用）
@@ -1873,7 +2028,7 @@
                 container.appendChild(item);
             });
 
-            document.getElementById('selected-count-badge').textContent = `${appState.activePatients.length}名選択`;
+            updateSelectedCountBadges();
             initLucide();
 
             // SortableJSの適用
@@ -2300,6 +2455,64 @@
                     c.style.padding = paddingSize;
                 });
             });
+        }
+
+        // モバイル用イベントの設定
+        function setupMobileEvents() {
+            // サイドバー開閉
+            const sidebar = document.querySelector('.sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            const openBtn = document.getElementById('sidebar-toggle-btn');
+            const closeBtn = document.getElementById('sidebar-close-btn');
+
+            if (openBtn) {
+                openBtn.addEventListener('click', () => {
+                    sidebar.classList.add('open');
+                    overlay.classList.add('open');
+                });
+            }
+
+            const closeSidebar = () => {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('open');
+            };
+
+            if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+            if (overlay) overlay.addEventListener('click', closeSidebar);
+
+            // モバイル用サブタブ切り替え
+            const patientsBtn = document.getElementById('subtab-patients-btn');
+            const scheduleBtn = document.getElementById('subtab-schedule-btn');
+            const patientsCard = document.getElementById('panel-patients-card');
+            const scheduleCard = document.getElementById('panel-schedule-card');
+
+            if (patientsBtn && scheduleBtn && patientsCard && scheduleCard) {
+                patientsBtn.addEventListener('click', () => {
+                    patientsBtn.classList.add('active');
+                    scheduleBtn.classList.remove('active');
+                    patientsCard.classList.add('mobile-active');
+                    scheduleCard.classList.remove('mobile-active');
+                });
+
+                scheduleBtn.addEventListener('click', () => {
+                    scheduleBtn.classList.add('active');
+                    patientsBtn.classList.remove('active');
+                    scheduleCard.classList.add('mobile-active');
+                    patientsCard.classList.remove('mobile-active');
+                });
+            }
+        }
+
+        // 選択人数のバッジ表示を一括更新
+        function updateSelectedCountBadges() {
+            const count = appState.activePatients.length;
+            const text = `${count}名選択`;
+            
+            const badge1 = document.getElementById('selected-count-badge');
+            if (badge1) badge1.textContent = text;
+            
+            const badge2 = document.getElementById('subtab-selected-badge');
+            if (badge2) badge2.textContent = count;
         }
     </script>
 </body>
