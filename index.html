@@ -894,18 +894,18 @@
             .sidebar {
                 position: fixed !important;
                 top: 0;
-                left: -340px;
+                left: -300px !important;
                 height: 100vh !important;
                 width: 300px !important;
                 z-index: 1000 !important;
-                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
                 box-shadow: 5px 0 25px rgba(0, 0, 0, 0.3);
                 border-right: 1px solid var(--border);
                 border-bottom: none;
                 padding: 1.25rem !important;
             }
             .sidebar.open {
-                transform: translateX(340px);
+                left: 0 !important;
             }
 
             /* ドロワーの背景オーバーレイ */
