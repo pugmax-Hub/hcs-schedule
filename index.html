@@ -1369,7 +1369,7 @@
     </div>
 
     <!-- アプリメイン画面 -->
-    <div class="app-layout no-print" id="app-layout" style="display: none;">
+    <div class="app-layout" id="app-layout" style="display: none;">
         <!-- スマホ設定用ドロワー背景オーバーレイ -->
         <div class="sidebar-overlay" id="sidebar-overlay"></div>
 
@@ -1559,6 +1559,10 @@
                         <button class="btn btn-secondary" onclick="window.print()">
                             <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
                             プリンター印刷 (A4)
+                        </button>
+                        <button class="btn btn-success" onclick="printAndSaveList()">
+                            <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
+                            印刷＆保存 (A4)
                         </button>
                     </div>
                 </div>
@@ -3203,7 +3207,6 @@
             // html2pdf実行
             html2pdf().set(opt).from(element).save().then(() => {
                 if (indicator) indicator.style.display = 'block';
-                exportUpdatedExcel();
             }).catch(err => {
                 console.error(err);
                 alert('PDFの生成中にエラーが発生しました。');
@@ -3293,12 +3296,15 @@
             }
         }
 
-        // 印刷完了またはキャンセルで印刷ダイアログが閉じられた後に自動保存を実行
-        window.addEventListener('afterprint', () => {
-            if (appState.workbook) {
-                exportUpdatedExcel();
+        // 往診リストを印刷し、その後にデータベースを自動保存する
+        function printAndSaveList() {
+            if (appState.activePatients.length === 0) {
+                alert('往診予定者が選択されていないため、印刷・保存できません。');
+                return;
             }
-        });
+            window.print();
+            exportUpdatedExcel();
+        }
 
     </script>
 
@@ -3330,17 +3336,19 @@
                 <h4>② スケジュールを作成する</h4>
                 <ol>
                     <li>左側のメニューで<strong>「対象施設」</strong>を選び、<strong>「往診日」「開始時間」</strong>や同行する<strong>「医師」「衛生士」</strong>を入力します。</li>
-                    <li>左側の<strong>「患者一覧」</strong>（※ヘッダー名が「口腔状況」になりました）で、今日往診する患者さんのチェックボックスにチェックを入れます。</li>
+                    <li>左側の<strong>「患者一覧」</strong>で、今日往診する患者さんのチェックボックスにチェックを入れます。<br>（一覧には「口腔状況」「当月実績」「注意事項」なども表示されています。）</li>
                     <li>右側の<strong>「本日の往診スケジュール」</strong>にチェックした患者さんが追加されます。カードの左側（三本線マーク）をドラッグして上下に動かすことで、<strong>訪問する順番を並び替え</strong>できます。</li>
-                    <li>各患者さんの「実施/不実施」や「往診タイプ」もクリックして切り替えられます。</li>
+                    <li>各患者さんの「実施/不実施」や「往診タイプ」「食事区分（経口/非経口）」もクリックして切り替えられます。</li>
                 </ol>
                 
                 <div style="margin: 1rem 0; padding: 0.75rem 1rem; background-color: var(--primary-light); border-left: 4px solid var(--primary); border-radius: 0.5rem; font-size: 0.85rem; color: var(--primary-dark);">
-                    <strong>📝 新機能：本日のメモ（一時的なメモ）</strong><br>
+                    <strong>📝 本日のメモ（一時的なメモ）について</strong><br>
                     印刷やPDFに書き出したいメモを患者さんごとに入力できます。<br>
                     ・<strong>入力方法①</strong>：スケジュールカード内の「本日のメモ...」欄に入力する。<br>
                     ・<strong>入力方法②</strong>：印刷プレビュー（タブ②）の「備考」セルを直接クリックして入力する。<br>
-                    ※この2つの入力欄はリアルタイムで自動同期します。印刷・PDF出力用の一時的なメモのため、元のExcelファイル（データベース）の備考欄には保存されず、データを汚しません。
+                    ※どちらから入力してもリアルタイムで自動同期されます。<br>
+                    ※このメモは印刷・PDF出力用の一時的なメモです。元のExcelファイル（データベース）の備考欄には保存されないため、データを汚す心配はありません。<br>
+                    ※メモが長くなっても、印刷時は最大3行に自動で収まるため、レイアウトが崩れることはありません。
                 </div>
                 
                 <!-- イラスト（Step 2） -->
@@ -3365,9 +3373,13 @@
                 <p><strong>【往診リスト印刷タブの場合】</strong><br>
                 ・<strong>「PDFダウンロード」ボタン</strong>：ボタンを押すだけで直接PDFファイルがダウンロードされます（手軽ですが、中身は画像データになるため文字のコピペ等はできません）。<br>
                 ・<strong>「プリンター印刷 (A4)」ボタン</strong>：紙に印刷できます。また、表示される設定画面で送信先を<strong>「PDFに保存」</strong>にして保存すると、<strong>文字のコピペや検索ができる高品質なPDF</strong>を作成できます。文字を検索・コピーしたい場合はこちらの方法がおすすめです。<br>
-                ・<strong>備考セルの直接編集</strong>：印刷前に、プレビューテーブルの「備考」セルを直接クリックしてキーボードからメモを追加・修正できます。画面上では「クリックして入力...」という薄いガイドや青色の枠線が表示されますが、印刷時には用紙やPDFには一切出力されませんのでご安心ください。</p>
+                ・<strong>「印刷＆保存 (A4)」ボタン</strong>：印刷した後に、自動的にExcelデータベースへの保存も実行されます。印刷と保存を一度に済ませたい場合はこのボタンが便利です。</p>
                 <p><strong>【FAX送信表・往診回数表タブの場合】</strong><br>
                 ・<strong>「FAX（または回数表）を印刷」ボタン</strong>：紙への印刷、およびブラウザ経由でのPDF保存が可能です。</p>
+                
+                <div style="margin: 0.75rem 0; padding: 0.6rem 1rem; background-color: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 0.5rem; font-size: 0.82rem; color: #92400e;">
+                    <strong>💡 ヒント：</strong>印刷プレビュー上で「備考」セルをクリックすると、その場でメモを直接編集できます。画面上に表示される薄いガイド（「クリックして入力...」の文字や青い枠線）は、印刷やPDFには一切出力されませんのでご安心ください。
+                </div>
                 
                 <!-- イラスト（Step 3） -->
                 <div style="display: flex; justify-content: center; margin: 1rem 0;">
@@ -3383,12 +3395,14 @@
                     </div>
                 </div>
                 
-                <h4>④ 実績を保存する（自動保存対応！）</h4>
-                <p>往診予定の作成や、実績の記録が終わったらデータを保存して元のExcelデータベースを更新する必要があります。</p>
-                <p><strong>💾 印刷・PDF保存時の自動保存機能（おすすめ）</strong><br>
-                ・「PDFダウンロード」をクリックした直後、または「プリンター印刷」をして印刷画面を閉じた（またはキャンセルした）直後に、<strong>自動的にデータベースの更新保存処理が実行されます</strong>。上書き保存または新しくダウンロードされたファイルを元のファイルと差し替えてください。これにより、実績の保存し忘れを防ぎます。</p>
-                <p><strong>手動で保存する場合</strong><br>
-                ・画面右上の「保存 (Excel更新)」ボタンを押すか、「④ 往診回数表印刷」タブを開いて緑色の「結果をデータベースへ保存」ボタンを押すことで、いつでも手動で保存できます。</p>
+                <h4>④ 実績を保存する（とても重要）</h4>
+                <p>往診が終わったら、データベースを保存して往診履歴を更新しましょう。以下のいずれかの方法で保存できます。</p>
+                <ol>
+                    <li><strong>「印刷＆保存 (A4)」ボタン</strong>（② 往診リスト印刷タブ）：印刷と保存が一度にできるので<strong>おすすめ</strong>です。</li>
+                    <li><strong>「結果をデータベースへ保存 (Excel出力)」ボタン</strong>（② 往診リスト印刷タブ または ④ 往診回数表印刷タブ）：保存のみを行いたい場合に使います。</li>
+                    <li><strong>「保存 (Excel更新)」ボタン</strong>（患者一覧の上部）：いつでも手動で保存できます。</li>
+                </ol>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">※通常の「プリンター印刷 (A4)」や「PDFダウンロード」ボタンでは自動保存は行われません。印刷だけ先にしたい場合はそちらをご利用ください。</p>
                 
                 <!-- イラスト（Step 4） -->
                 <div style="display: flex; justify-content: center; margin: 1rem 0;">
