@@ -1432,6 +1432,20 @@
                 </div>
             </div>
 
+            <!-- バックアップ・復元機能のUI -->
+            <div class="sidebar-section" style="border-top: 1px solid #334155; padding-top: 1.25rem; margin-top: 0.5rem;">
+                <label>一時データの保存と復元</label>
+                <div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">
+                    <button class="btn btn-secondary" onclick="exportDrafts()" style="flex: 1; padding: 0.5rem; font-size: 0.8rem;" title="これまでブラウザに保存された選択データやメモをPCへ保存します">
+                        <i data-lucide="upload" style="width: 14px; height: 14px;"></i> バックアップ
+                    </button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('import-file-input').click()" style="flex: 1; padding: 0.5rem; font-size: 0.8rem;" title="PCに保存したバックアップファイルを読み込みます">
+                        <i data-lucide="download" style="width: 14px; height: 14px;"></i> 復元
+                    </button>
+                </div>
+                <input type="file" id="import-file-input" style="display: none;" accept=".json" onchange="importDrafts(event)">
+            </div>
+
             <div style="margin-top: auto; padding-top: 1rem; border-top: 1px solid #334155;">
                 <button class="btn btn-secondary" id="reselect-file-btn" style="width: 100%;">
                     <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
@@ -1491,21 +1505,13 @@
                                 <span class="badge badge-primary" id="patient-count-badge">0名登録</span>
                             </div>
                         </div>
+                        <!-- 全解除ボタンのみをヘッダーの下に固定配置 -->
+                        <div style="display: flex; gap: 0.5rem; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border); background-color: #fafafa;">
+                            <button class="btn btn-secondary" onclick="deselectAllPatients()" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
+                                <i data-lucide="square" style="width: 16px; height: 16px;"></i> 全解除
+                            </button>
+                        </div>
                         <div class="panel-body">
-                            <!-- 一括選択コントロール -->
-                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap;">
-                                <button class="btn btn-secondary" onclick="deselectAllPatients()" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
-                                    <i data-lucide="square" style="width: 16px; height: 16px;"></i> 全解除
-                                </button>
-                                <div style="display: flex; align-items: center; gap: 0.25rem; margin-left: auto;">
-                                    <span style="font-size: 0.9rem; color: var(--text-dark);">上から</span>
-                                    <input type="number" id="bulk-select-count" min="1" value="10" style="width: 60px; padding: 0.25rem; border: 1px solid var(--border); border-radius: 4px; text-align: center;">
-                                    <span style="font-size: 0.9rem; color: var(--text-dark);">名</span>
-                                    <button class="btn btn-secondary" onclick="selectTopNPatients()" style="padding: 0.4rem 0.8rem; font-size: 0.9rem; background-color: var(--primary); color: white;">
-                                        一括選択
-                                    </button>
-                                </div>
-                            </div>
                             <table class="patient-table">
                                 <thead>
                                     <tr>
@@ -1655,7 +1661,7 @@
 
                             <div class="fax-message-box">
                                 いつもお世話になっております。<br>
-                                上記往診日の歯科診療の予定者リストをお送りいたします。<br>
+                                上記往診日の歯科衛生士による口腔ケア予定者リストをお送りします。<br>
                                 当日はどうぞよろしくお願い申し上げます。
                             </div>
 
@@ -1756,6 +1762,11 @@
             const today = new Date().toISOString().split('T')[0];
             document.getElementById('visit-date').value = today;
             appState.selectedDate = today;
+
+            // 訪問開始時間の初期値読み込み (LocalStorage)
+            const savedStartTime = localStorage.getItem('hcs_start_time') || '09:00';
+            document.getElementById('start-time').value = savedStartTime;
+            appState.startTime = savedStartTime;
         });
 
         function initLucide() {
@@ -2001,6 +2012,7 @@
 
             document.getElementById('start-time').addEventListener('change', (e) => {
                 appState.startTime = e.target.value;
+                localStorage.setItem('hcs_start_time', appState.startTime); // 自動保存
                 calculateScheduleTimes();
                 updateReports();
             });
@@ -2060,6 +2072,7 @@
             let colVisits = [];
             let colPrecautions = -1;
             let colMemo = -1;
+            let colNutrition = -1; // 栄養列
 
             // 1行目(ヘッダー)を走査
             for (let c = range.s.c; c <= range.e.c; ++c) {
@@ -2076,7 +2089,13 @@
                     }
                     if (['注意事項', '注意', 'Precautions'].includes(val)) colPrecautions = c;
                     if (['備考', 'メモ', 'Memo'].includes(val)) colMemo = c;
+                    if (['栄養', 'Nutrition'].includes(val)) colNutrition = c;
                 }
+            }
+
+            // 栄養列が見つからず、L列（インデックス11）が存在すれば割り当てる
+            if (colNutrition === -1 && range.e.c >= 11) {
+                colNutrition = 11;
             }
 
             // 診察日列をヘッダー名や位置などで適切に並び替え
@@ -2100,6 +2119,7 @@
                 if (!name) continue; // 名前が空ならスキップ
 
                 const memoVal = getCellVal(colMemo);
+                const nutritionVal = getCellVal(colNutrition);
                 const excelRowIndex = r - (range.s.r + 1); // 0始まりのデータ行インデックス
 
                 const p = {
@@ -2113,8 +2133,9 @@
                     visits: colVisits.map(col => formatDateString(getCellVal(col.index))).filter(d => d !== ''),
                     precautions: getCellVal(colPrecautions),
                     memo: memoVal,
+                    nutrition: nutritionVal,
                     isExcluded: memoVal.includes('除外'),
-                    isNonOral: memoVal.includes('非経口')
+                    isNonOral: nutritionVal.includes('非経口')
                 };
                 patientsList.push(p);
             }
@@ -2134,18 +2155,120 @@
             autoSelectPatientsByDate();
         }
 
+        // ローカル下書き（選択状態と本日メモ）を保存
+        function saveDraft() {
+            if (!appState.currentSheet || !appState.selectedDate) return;
+            const draftData = appState.activePatients.map(ap => ({
+                id: ap.id,
+                status: ap.status,
+                currentVisitCount: ap.currentVisitCount,
+                todayMemo: ap.todayMemo,
+                isNonOral: ap.isNonOral,
+                nutrition: ap.nutrition
+            }));
+            const key = `hcs_draft_${appState.currentSheet}_${appState.selectedDate}`;
+            localStorage.setItem(key, JSON.stringify(draftData));
+        }
+
+        // ローカル下書きを読み込んで復元
+        function loadDraft() {
+            if (!appState.currentSheet || !appState.selectedDate) return;
+            const key = `hcs_draft_${appState.currentSheet}_${appState.selectedDate}`;
+            const saved = localStorage.getItem(key);
+            
+            appState.activePatients = [];
+
+            if (saved) {
+                try {
+                    const draftData = JSON.parse(saved);
+                    draftData.forEach(draftItem => {
+                        const p = appState.patients.find(pat => pat.id === draftItem.id);
+                        if (p) {
+                            const pCopy = { ...p };
+                            pCopy.status = draftItem.status || 'completed';
+                            pCopy.currentVisitCount = draftItem.currentVisitCount || 1;
+                            pCopy.todayMemo = draftItem.todayMemo || '';
+                            
+                            if (draftItem.isNonOral !== undefined) {
+                                pCopy.isNonOral = draftItem.isNonOral;
+                                p.isNonOral = draftItem.isNonOral;
+                            }
+                            if (draftItem.nutrition !== undefined) {
+                                pCopy.nutrition = draftItem.nutrition;
+                                p.nutrition = draftItem.nutrition;
+                            }
+                            appState.activePatients.push(pCopy);
+                        }
+                    });
+                } catch (e) {
+                    console.error('Failed to parse draft data', e);
+                }
+            }
+        }
+
         // 日付が変わった時の処理
         function autoSelectPatientsByDate() {
             if (!appState.selectedDate) return;
             
-            // 以前はここで日付が一致する患者を自動選択していましたが、
-            // 「実績」と「予定」が混同する原因となるため自動選択は廃止し、手動チェックのみとします。
-            appState.activePatients = [];
+            // ローカル下書きの読み込み・復元
+            loadDraft();
 
             renderPatientTable();
             renderSelectedList();
             calculateScheduleTimes();
             updateReports();
+        }
+
+        // 下書きデータのエクスポート
+        function exportDrafts() {
+            const backup = {};
+            // 病院情報と開始時間もバックアップに含める
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.startsWith('hcs_draft_') || key === 'hcs_clinic_info' || key === 'hcs_start_time')) {
+                    backup[key] = localStorage.getItem(key);
+                }
+            }
+            
+            const jsonStr = JSON.stringify(backup, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const today = new Date().toISOString().split('T')[0];
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `hcs_backup_${today}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 下書きデータのインポート（上書きマージ）
+        function importDrafts(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    let count = 0;
+                    for (const key in imported) {
+                        if (key.startsWith('hcs_draft_') || key === 'hcs_clinic_info' || key === 'hcs_start_time') {
+                            localStorage.setItem(key, imported[key]);
+                            count++;
+                        }
+                    }
+                    alert(`${count}件の設定・下書きデータを正常にインポート（合体）しました。\n画面を再読み込みします。`);
+                    location.reload();
+                } catch (err) {
+                    console.error(err);
+                    alert('ファイルのインポートに失敗しました。正しいバックアップファイルかご確認ください。');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = '';
         }
 
         // 左側：患者一覧テーブルの描画
@@ -2164,13 +2287,14 @@
             appState.patients.forEach((p, index) => {
                 const tr = document.createElement('tr');
                 
-                // 当月の実績かどうかを判定
+                // 当月の実績（今日の日付より過去の実績）かどうかを判定
                 const monthVisits = p.visits.filter(v => v.startsWith(targetMonth));
-                const hasVisit1ThisMonth = monthVisits.length > 0;
-                const hasVisit2ThisMonth = monthVisits.length > 1;
+                const pastMonthVisits = monthVisits.filter(v => v < targetDateStr);
+                const hasVisit1ThisMonth = pastMonthVisits.length > 0;
+                const hasVisit2ThisMonth = pastMonthVisits.length > 1;
                 
-                // 当月すでに2回完了しているか
-                const isAlreadyFinishedBoth = monthVisits.length >= 2;
+                // 今日より過去に当月すでに2回完了しているか
+                const isAlreadyFinishedBoth = pastMonthVisits.length >= 2;
                 const isActive = appState.activePatients.some(ap => ap.id === p.id);
 
                 // 非経口患者は背景を薄グレーに
@@ -2329,11 +2453,27 @@
             const targetDateStr = formatDateString(new Date(appState.selectedDate));
             const targetMonth = targetDateStr.substring(0, 7);
             
-            // 30名の上限チェック
-            if (isChecked && appState.activePatients.length >= 30) {
-                alert('1回の往診スケジュールに登録できるのは最大30名までです。');
-                renderPatientTable();
-                return;
+            if (isChecked) {
+                // 30名の上限チェック
+                if (appState.activePatients.length >= 30) {
+                    alert('1回の往診スケジュールに登録できるのは最大30名までです。');
+                    renderPatientTable();
+                    return;
+                }
+
+                // 未来実績の検知と警告ダイアログ
+                const futureVisits = patient.visits.filter(v => v.startsWith(targetMonth) && v > targetDateStr);
+                if (futureVisits.length > 0) {
+                    const futureVisitsStr = futureVisits.map(v => v.substring(5)).join(', '); // 月日のみ表示
+                    const proceed = confirm(
+                        `【警告】${patient.name} さんは、現在の設定日（${targetDateStr.substring(5)}）よりも未来の日付（${futureVisitsStr}）で診察実績がすでに登録されています。\n\n` +
+                        `日付の選択ミスなどではありませんか？このまま「過去の診察」として追加してもよろしいですか？`
+                    );
+                    if (!proceed) {
+                        renderPatientTable(); // チェックボックスのチェックを外す
+                        return;
+                    }
+                }
             }
             
             togglePatientActiveNoRender(patient, isChecked, targetMonth);
@@ -2342,6 +2482,8 @@
             calculateScheduleTimes();
             updateReports();
             updateSelectedCountBadges();
+            
+            saveDraft(); // 下書き保存
         }
 
         // 再描画を伴わない内部用トグル関数（一括操作用）
@@ -2353,16 +2495,13 @@
                     pCopy.todayMemo = ''; // 本日のメモ（一時的）
                     
                     const monthVisits = patient.visits.filter(v => v.startsWith(targetMonth));
-                    const hasVisit1ThisMonth = monthVisits.length > 0;
-                    const hasVisit2ThisMonth = monthVisits.length > 1;
+                    const pastMonthVisits = monthVisits.filter(v => v < targetDateStr);
+                    const hasVisit1ThisMonth = pastMonthVisits.length > 0;
                     
-                    // 往診回数の自動判定
-                    if (hasVisit1ThisMonth && !hasVisit2ThisMonth) {
+                    // 往診回数の自動判定（過去に1回以上実績があれば今回は2回目）
+                    if (hasVisit1ThisMonth) {
                         pCopy.currentVisitCount = 2; 
-                    } else if (!hasVisit1ThisMonth && hasVisit2ThisMonth) {
-                        pCopy.currentVisitCount = 1; 
                     } else {
-                        // 両方空欄、または当月ではない場合 → デフォルトは「1回目」
                         pCopy.currentVisitCount = 1; 
                     }
                     
@@ -2408,8 +2547,12 @@
             const targetDateStr = formatDateString(new Date(appState.selectedDate));
             const targetMonth = targetDateStr.substring(0, 7);
 
-            // 対象の部屋 of 全患者（当月すでに2回完了している人は除く）
-            const roomPatients = appState.patients.filter(p => p.room === room && p.visits.filter(v => v.startsWith(targetMonth)).length < 2);
+            // 対象の部屋 of 全患者（今日より過去にすでに2回完了している人は除く）
+            const roomPatients = appState.patients.filter(p => {
+                const monthVisits = p.visits.filter(v => v.startsWith(targetMonth));
+                const pastMonthVisits = monthVisits.filter(v => v < targetDateStr);
+                return p.room === room && pastMonthVisits.length < 2;
+            });
             if (roomPatients.length === 0) return;
 
             // その部屋の患者がすでに全員選択されているかどうか
@@ -2419,7 +2562,18 @@
             if (isToSelect) {
                 // 新たに選択状態にする対象（除外フラグのある人を除く）
                 const newAdditions = roomPatients.filter(p => !appState.activePatients.some(ap => ap.id === p.id));
-                const toAdd = newAdditions.filter(p => !p.isExcluded);
+                let toAdd = newAdditions.filter(p => !p.isExcluded);
+
+                // 未来実績がある患者を検出し、一括選択から除外
+                const skippedPatients = [];
+                toAdd = toAdd.filter(p => {
+                    const futureVisits = p.visits.filter(v => v.startsWith(targetMonth) && v > targetDateStr);
+                    if (futureVisits.length > 0) {
+                        skippedPatients.push(p.name);
+                        return false;
+                    }
+                    return true;
+                });
 
                 // 30名の上限チェック
                 if (appState.activePatients.length + toAdd.length > 30) {
@@ -2430,6 +2584,15 @@
                 toAdd.forEach(p => {
                     togglePatientActiveNoRender(p, true, targetMonth);
                 });
+
+                if (skippedPatients.length > 0) {
+                    alert(
+                        `【操作ミス防止警告】\n` +
+                        `未来に診察実績が登録されている以下の患者は、一括選択から除外されました。\n` +
+                        `・${skippedPatients.join(', ')}\n` +
+                        `追加したい場合は、一覧から直接手動で選択してください。`
+                    );
+                }
             } else {
                 // 一括解除
                 roomPatients.forEach(p => {
@@ -2442,6 +2605,8 @@
             calculateScheduleTimes();
             updateReports();
             updateSelectedCountBadges();
+            
+            saveDraft(); // 下書き保存
         }
 
         // 一括選択アクション
@@ -2451,14 +2616,23 @@
 
             let currentCount = appState.activePatients.length;
             let hitLimit = false;
+            const skippedPatients = [];
 
             appState.patients.forEach(p => {
                 if (p.isExcluded) return; // 除外者はスキップ
                 
                 const monthVisits = p.visits.filter(v => v.startsWith(targetMonth));
-                if (monthVisits.length < 2) {
+                const pastMonthVisits = monthVisits.filter(v => v < targetDateStr);
+                if (pastMonthVisits.length < 2) {
                     const alreadyActive = appState.activePatients.some(ap => ap.id === p.id);
                     if (!alreadyActive) {
+                        // 未来実績がある患者を検出し、一括選択から除外
+                        const futureVisits = p.visits.filter(v => v.startsWith(targetMonth) && v > targetDateStr);
+                        if (futureVisits.length > 0) {
+                            skippedPatients.push(p.name);
+                            return;
+                        }
+
                         if (currentCount < 30) {
                             togglePatientActiveNoRender(p, true, targetMonth);
                             currentCount++;
@@ -2473,11 +2647,22 @@
                 alert('1回の往診スケジュールに登録できるのは最大30名までです。\n30名を超えるため、一部の選択をスキップしました。');
             }
 
+            if (skippedPatients.length > 0) {
+                alert(
+                    `【操作ミス防止警告】\n` +
+                    `未来に診察実績が登録されている以下の患者は、一括全選択から除外されました。\n` +
+                    `・${skippedPatients.join(', ')}\n` +
+                    `追加したい場合は、一覧から直接手動で選択してください。`
+                );
+            }
+
             renderPatientTable();
             renderSelectedList();
             calculateScheduleTimes();
             updateReports();
             updateSelectedCountBadges();
+            
+            saveDraft(); // 下書き保存
         }
 
         function deselectAllPatients() {
@@ -2486,47 +2671,11 @@
             renderSelectedList();
             calculateScheduleTimes();
             updateReports();
+            
+            saveDraft(); // 下書き保存
         }
 
-        function selectTopNPatients() {
-            const n = parseInt(document.getElementById('bulk-select-count').value, 10);
-            if (isNaN(n) || n <= 0) return;
 
-            const targetDateStr = formatDateString(new Date(appState.selectedDate));
-            const targetMonth = targetDateStr.substring(0, 7);
-
-            let selectedCount = 0;
-            let currentCount = appState.activePatients.length;
-            let hitLimit = false;
-
-            appState.patients.forEach(p => {
-                if (p.isExcluded) return; // 除外者はスキップ
-                
-                const monthVisits = p.visits.filter(v => v.startsWith(targetMonth));
-                if (monthVisits.length < 2) {
-                    const alreadyActive = appState.activePatients.some(ap => ap.id === p.id);
-                    if (!alreadyActive && selectedCount < n) {
-                        if (currentCount < 30) {
-                            togglePatientActiveNoRender(p, true, targetMonth);
-                            selectedCount++;
-                            currentCount++;
-                        } else {
-                            hitLimit = true;
-                        }
-                    }
-                }
-            });
-
-            if (hitLimit) {
-                alert('1回の往診スケジュールに登録できるのは最大30名までです。\n30名を超えるため、一部の選択をスキップしました。');
-            }
-
-            renderPatientTable();
-            renderSelectedList();
-            calculateScheduleTimes();
-            updateReports();
-            updateSelectedCountBadges();
-        }
 
         // 右側：選択済み並び替えリストの描画
         function renderSelectedList() {
@@ -2624,6 +2773,8 @@
                     
                     calculateScheduleTimes();
                     updateReports();
+                    
+                    saveDraft(); // 下書き保存
                 }
             });
         }
@@ -2636,6 +2787,8 @@
                 renderSelectedList();
                 calculateScheduleTimes();
                 updateReports();
+                
+                saveDraft(); // 下書き保存
             }
         }
 
@@ -2657,6 +2810,8 @@
                     previewCell.textContent = val;
                 }
             }
+            
+            saveDraft(); // 下書き保存
         }
 
         // 往診回数のトグル切り替え
@@ -2667,6 +2822,8 @@
                 renderSelectedList();
                 calculateScheduleTimes();
                 updateReports();
+                
+                saveDraft(); // 下書き保存
             }
         }
 
@@ -2679,22 +2836,13 @@
             if (!p) return;
             
             p.isNonOral = !p.isNonOral;
-            
-            if (p.isNonOral) {
-                // 非経口 ➔ 備考に「非経口」を記録
-                if (!p.memo.includes('非経口')) {
-                    p.memo = p.memo ? `${p.memo} (非経口)` : '非経口';
-                }
-            } else {
-                // 経口 ➔ 備考から「非経口」を消去
-                p.memo = p.memo.replace(/\s*\(?非経口\)?/g, '').trim();
-            }
+            p.nutrition = p.isNonOral ? '非経口' : '経口'; // 栄養列を更新
 
             // 2. 本日のスケジュール（appState.activePatients）側も存在すれば同期
             const activeP = appState.activePatients.find(ap => ap.id === patientId);
             if (activeP) {
                 activeP.isNonOral = p.isNonOral;
-                activeP.memo = p.memo;
+                activeP.nutrition = p.nutrition;
             }
 
             // 3. UIの再描画
@@ -2702,34 +2850,60 @@
             renderSelectedList();
             calculateScheduleTimes();
             updateReports();
+            
+            saveDraft(); // 下書き保存
         }
 
         // スケジュール時間計算
         function calculateScheduleTimes() {
             if (appState.activePatients.length === 0) return;
 
-            // 実施する患者の総数をカウント（キャンセルを除く）
-            const activeCount = appState.activePatients.filter(ap => ap.status !== 'cancelled').length;
+            // 1. 実際に実施する患者のみのリストを作成（キャンセルを除く）
+            const validPatients = appState.activePatients.filter(ap => ap.status !== 'cancelled');
+            const activeCount = validPatients.length;
+            
             // 20名未満の場合は医師の診察時間を10分に、20名以上の場合は20分にする
             const docInterval = activeCount < 20 ? 10 : 20;
 
             let currentDocTime = timeToMinutes(appState.startTime); // 医師
             let currentHygTime = timeToMinutes(appState.startTime); // 衛生士
 
+            // 各ペアの開始時間を記憶する変数
+            let pairDocStart = currentDocTime;
+            let pairHygStart = currentHygTime;
+            
+            // 各ペア内の最大終了時間を記録し、次のペアの開始時間にするための変数
+            let nextDocTimeCandidate = currentDocTime;
+            let nextHygTimeCandidate = currentHygTime;
+
+            // まず、キャンセルされた患者の表示を「不実施」にクリア
             appState.activePatients.forEach(p => {
-                const el = document.getElementById(`times-display-${p.id}`);
-                
-                // 不実施（キャンセル）の場合は時間を割り振らない
                 if (p.status === 'cancelled') {
                     p.docTimeStr = '不実施';
                     p.hygTimeStr = '不実施';
+                    const el = document.getElementById(`times-display-${p.id}`);
                     if (el) {
                         el.innerHTML = `
                             <div style="color: var(--danger); text-decoration: line-through;">医師: 不実施</div>
                             <div style="color: var(--danger); text-decoration: line-through;">衛生士: 不実施</div>
                         `;
                     }
-                    return;
+                }
+            });
+
+            // 実施患者を順にループし、2人ずつのペアで計算
+            validPatients.forEach((p, idx) => {
+                const el = document.getElementById(`times-display-${p.id}`);
+                const isEven = (idx % 2 === 0); // ペアの1人目かどうか
+
+                if (isEven) {
+                    // ペアの1人目の時、現在の基準時間をペアの開始時間に設定
+                    pairDocStart = currentDocTime;
+                    pairHygStart = currentHygTime;
+                    
+                    // 終了時間候補を初期化
+                    nextDocTimeCandidate = currentDocTime;
+                    nextHygTimeCandidate = currentHygTime;
                 }
 
                 let docStart = null;
@@ -2739,21 +2913,19 @@
 
                 if (p.currentVisitCount === 1) {
                     // 1回目：医師(docInterval分) + 衛生士(20分)
-                    docStart = currentDocTime;
-                    currentDocTime += docInterval;
-                    docEnd = currentDocTime;
+                    docStart = pairDocStart;
+                    docEnd = pairDocStart + docInterval;
 
-                    hygStart = Math.max(docEnd, currentHygTime);
-                    currentHygTime = hygStart + 20;
-                    hygEnd = currentHygTime;
+                    // 医師と衛生士が続けて作業する場合、時間を被らせず1分あける
+                    hygStart = Math.max(docEnd + 1, pairHygStart);
+                    hygEnd = hygStart + 20;
                 } else {
                     // 2回目：衛生士のみ(20分)
                     docStart = null;
                     docEnd = null;
 
-                    hygStart = currentHygTime;
-                    currentHygTime = hygStart + 20;
-                    hygEnd = currentHygTime;
+                    hygStart = pairHygStart;
+                    hygEnd = hygStart + 20;
                 }
 
                 p.docTimeStr = docStart !== null ? `${minutesToTime(docStart)} - ${minutesToTime(docEnd)}` : '-';
@@ -2764,6 +2936,25 @@
                         <div>医師: <span class="font-bold" style="color: ${docStart !== null ? '#1e40af' : '#64748b'};">${p.docTimeStr}</span></div>
                         <div>衛生士: <span class="font-bold" style="color: #059669;">${p.hygTimeStr}</span></div>
                     `;
+                }
+
+                // ペア内での最大終了時間を更新
+                if (docEnd !== null && docEnd > nextDocTimeCandidate) {
+                    nextDocTimeCandidate = docEnd;
+                }
+                if (hygEnd > nextHygTimeCandidate) {
+                    nextHygTimeCandidate = hygEnd;
+                }
+
+                // ペアの2人目（または最後の奇数番目の患者）の処理が終わったら、時間を進める
+                if (!isEven || idx === activeCount - 1) {
+                    // 実際に診察が行われて終了時間が進んだ場合のみ、移動時間1分を加えて更新する
+                    if (nextDocTimeCandidate > currentDocTime) {
+                        currentDocTime = nextDocTimeCandidate + 1;
+                    }
+                    if (nextHygTimeCandidate > currentHygTime) {
+                        currentHygTime = nextHygTimeCandidate + 1;
+                    }
                 }
             });
         }
@@ -2972,6 +3163,7 @@
                 let colKarteIdx = -1;
                 let colVisitIdxs = [];
                 let colMemoIdx = -1;
+                let colNutritionIdx = -1; // 栄養列
 
                 // 1行目(ヘッダー)を走査
                 for (let c = range.s.c; c <= range.e.c; ++c) {
@@ -2984,7 +3176,13 @@
                             colVisitIdxs.push(c);
                         }
                         if (['備考', 'メモ', 'Memo'].includes(val)) colMemoIdx = c;
+                        if (['栄養', 'Nutrition'].includes(val)) colNutritionIdx = c;
                     }
+                }
+
+                // 栄養列が見つからず、L列（インデックス11）が存在すれば割り当てる
+                if (colNutritionIdx === -1 && range.e.c >= 11) {
+                    colNutritionIdx = 11;
                 }
 
                 if (colKarteIdx === -1 || colVisitIdxs.length === 0) {
@@ -2999,11 +3197,17 @@
                 for (let r = range.s.r + 1; r <= range.e.r; ++r) {
                     const excelRowIndex = r - (range.s.r + 1);
                     
-                    // 備考列の更新（除外・食事区分の保存）
+                    // 備考列・栄養列の更新
                     const targetP = appState.patients.find(p => p.excelRowIndex === excelRowIndex && p.id.startsWith(sheetName));
-                    if (targetP && colMemoIdx !== -1) {
-                        const memoCellAddr = XLSX.utils.encode_cell({r: r, c: colMemoIdx});
-                        writeCell(ws, memoCellAddr, targetP.memo || '');
+                    if (targetP) {
+                        if (colMemoIdx !== -1) {
+                            const memoCellAddr = XLSX.utils.encode_cell({r: r, c: colMemoIdx});
+                            writeCell(ws, memoCellAddr, targetP.memo || '');
+                        }
+                        if (colNutritionIdx !== -1) {
+                            const nutritionCellAddr = XLSX.utils.encode_cell({r: r, c: colNutritionIdx});
+                            writeCell(ws, nutritionCellAddr, targetP.nutrition || '');
+                        }
                     }
                     
                     // 本日の activePatients の中から該当患者を探す
@@ -3319,106 +3523,81 @@
                 <button class="modal-close-btn" id="help-modal-close-btn">&times;</button>
             </div>
             <div class="modal-body">
-                <p>このツールは、Excelデータから往診（訪問診療）のスケジュールを作成し、印刷・保存するためのアプリです。</p>
+                <p style="font-size: 1rem; font-weight: 600; color: var(--text-dark); border-bottom: 2px solid var(--primary); padding-bottom: 0.5rem; margin-bottom: 1.25rem;">
+                    🏥 HCS（歯科往診スケジュール管理システム）の操作マニュアル
+                </p>
+                <p>このツールは、Excelデータから往診のスケジュールを自動計算し、往診リストやFAX送信表を簡単に作成・印刷するためのアプリです。</p>
+
+                <h4 style="color: var(--primary); font-size: 1.05rem; margin-top: 1.5rem; margin-bottom: 0.5rem; border-left: 4px solid var(--primary); padding-left: 0.5rem;">
+                    📅 往診業務の基本の流れ（3つのステップ）
+                </h4>
                 
-                <h4>① Excelファイルを読み込む</h4>
-                <p>最初の画面にある点線の四角い枠をクリックして、往診用のExcelファイルを選択します。パソコンの場合はファイルを直接枠内にドラッグ＆ドロップしても読み込めます。</p>
-                
-                <!-- イラスト（Step 1） -->
-                <div style="display: flex; justify-content: center; margin: 1rem 0;">
-                    <div style="border: 2px dashed var(--primary); padding: 1.25rem; border-radius: 0.75rem; text-align: center; background-color: var(--primary-light); width: 85%; max-width: 320px; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
-                        <i data-lucide="file-spreadsheet" style="width: 38px; height: 38px; color: var(--primary);"></i>
-                        <div style="font-size: 0.8rem; font-weight: bold; color: var(--primary-dark);">往診データベース.xlsx</div>
-                        <div style="font-size: 0.7rem; color: var(--text-muted);">枠内にファイルをドロップ！</div>
-                    </div>
-                </div>
-                
-                <h4>② スケジュールを作成する</h4>
-                <ol>
-                    <li>左側のメニューで<strong>「対象施設」</strong>を選び、<strong>「往診日」「開始時間」</strong>や同行する<strong>「医師」「衛生士」</strong>を入力します。</li>
-                    <li>左側の<strong>「患者一覧」</strong>で、今日往診する患者さんのチェックボックスにチェックを入れます。<br>（一覧には「口腔状況」「当月実績」「注意事項」なども表示されています。）</li>
-                    <li>右側の<strong>「本日の往診スケジュール」</strong>にチェックした患者さんが追加されます。カードの左側（三本線マーク）をドラッグして上下に動かすことで、<strong>訪問する順番を並び替え</strong>できます。</li>
-                    <li>各患者さんの「実施/不実施」や「往診タイプ」「食事区分（経口/非経口）」もクリックして切り替えられます。</li>
+                <ol style="padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                    <li>
+                        <strong>【ステップ①】往診の事前準備（前日まで）</strong>
+                        <ul style="padding-left: 1.25rem; font-size: 0.9rem; color: var(--text-dark); margin-top: 0.25rem;">
+                            <li>Excelファイルを読み込み、サイドバーで<strong>「対象施設」「往診日」「開始時間」</strong>などを設定します。</li>
+                            <li>左側の<strong>「患者一覧」</strong>で、往診する患者さんにチェックを入れます。</li>
+                            <li>右側で<strong>「順番の並び替え」</strong>を行い、スケジュールを確定させたら、<strong>「FAX送信表」</strong>や<strong>「往診リスト」</strong>を印刷します。</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>【ステップ②】往診から帰宅後（当日）</strong>
+                        <ul style="padding-left: 1.25rem; font-size: 0.9rem; color: var(--text-dark); margin-top: 0.25rem;">
+                            <li>往診が終わったら、再度このアプリを開いて同じExcelファイルを読み込み、その日の日付を選択します。<br>※前日準備したメンバーや並び順が<strong>そのまま自動復元</strong>されます。</li>
+                            <li>右側のスケジュールカードで、実際に診察を行ったかどうか（<strong>「実施/不実施」</strong>）を切り替えます。不実施にすると、後続の患者さんの時間が自動で1分詰まります。</li>
+                            <li>必要に応じて、患者カードの<strong>「本日のメモ」</strong>欄に往診時の特記事項を入力します。</li>
+                        </ul>
+                    </li>
+                    <li>
+                        <strong>【ステップ③】実績の保存と印刷（完了）</strong>
+                        <ul style="padding-left: 1.25rem; font-size: 0.9rem; color: var(--text-dark); margin-top: 0.25rem;">
+                            <li>「② 往診リスト印刷」タブを開き、緑色の<strong>「印刷＆保存 (A4)」</strong>ボタンを押します。</li>
+                            <li>実績が反映された最終版の往診リストが印刷（またはPDF化）され、同時にExcelデータベースの診察日も自動で上書き更新されます。これで本日の業務は完了です！</li>
+                        </ul>
+                    </li>
                 </ol>
+
+                <h4 style="color: var(--primary); font-size: 1.05rem; margin-top: 1.75rem; margin-bottom: 0.5rem; border-left: 4px solid var(--primary); padding-left: 0.5rem;">
+                    💡 知っておくと便利な「裏ワザ」機能
+                </h4>
                 
-                <div style="margin: 1rem 0; padding: 0.75rem 1rem; background-color: var(--primary-light); border-left: 4px solid var(--primary); border-radius: 0.5rem; font-size: 0.85rem; color: var(--primary-dark);">
-                    <strong>📝 本日のメモ（一時的なメモ）について</strong><br>
-                    印刷やPDFに書き出したいメモを患者さんごとに入力できます。<br>
-                    ・<strong>入力方法①</strong>：スケジュールカード内の「本日のメモ...」欄に入力する。<br>
-                    ・<strong>入力方法②</strong>：印刷プレビュー（タブ②）の「備考」セルを直接クリックして入力する。<br>
-                    ※どちらから入力してもリアルタイムで自動同期されます。<br>
-                    ※このメモは印刷・PDF出力用の一時的なメモです。元のExcelファイル（データベース）の備考欄には保存されないため、データを汚す心配はありません。<br>
-                    ※メモが長くなっても、印刷時は最大3行に自動で収まるため、レイアウトが崩れることはありません。
-                </div>
-                
-                <!-- イラスト（Step 2） -->
-                <div style="display: flex; gap: 0.75rem; justify-content: center; margin: 1rem 0; flex-wrap: wrap; max-width: 480px; margin-left: auto; margin-right: auto;">
-                    <div style="border: 1px solid var(--border); padding: 0.75rem; border-radius: 0.6rem; background-color: #fafafa; flex: 1; min-width: 140px; text-align: center;">
-                        <div style="font-size: 0.75rem; font-weight: bold; margin-bottom: 0.4rem; color: var(--text-dark);">1. 患者を選択</div>
-                        <div style="display: inline-flex; align-items: center; gap: 0.25rem; background: white; padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 0.25rem; font-size: 0.8rem; box-shadow: var(--shadow-sm);">
-                            <i data-lucide="check-square" style="width: 14px; height: 14px; color: var(--primary);"></i> 101 山田太郎
-                        </div>
+                <div style="background-color: var(--primary-light); border-left: 4px solid var(--primary); padding: 1rem; border-radius: 0.5rem; font-size: 0.88rem; display: flex; flex-direction: column; gap: 0.75rem; color: var(--primary-dark);">
+                    <div>
+                        <strong>🖱️ 範囲選択（まとめてチェック）</strong><br>
+                        患者一覧で、<strong>Shiftキーを押しながら</strong>別のチェックボックスをクリックすると、その間にある複数の患者さんを一括でまとめて選択・解除できます。
                     </div>
-                    <div style="display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.25rem; font-weight: bold;">➔</div>
-                    <div style="border: 1px solid var(--border); padding: 0.75rem; border-radius: 0.6rem; background-color: #fafafa; flex: 1; min-width: 140px; text-align: center;">
-                        <div style="font-size: 0.75rem; font-weight: bold; margin-bottom: 0.4rem; color: var(--text-dark);">2. ドラッグして順序変更</div>
-                        <div style="display: inline-flex; align-items: center; gap: 0.25rem; background: white; padding: 0.25rem 0.5rem; border: 1px solid #ddd; border-radius: 0.25rem; font-size: 0.8rem; border-left: 3px solid var(--primary); box-shadow: var(--shadow-sm);">
-                            <i data-lucide="grip-vertical" style="width: 14px; height: 14px; color: #94a3b8;"></i> 山田太郎
-                        </div>
+                    <div>
+                        <strong>✏️ プレビュー画面でのメモ直接編集</strong><br>
+                        印刷プレビュー（タブ②）の「備考」セルを直接クリックしてメモを入力することも可能です。スケジュールカードの入力欄とリアルタイムで自動同期されます。長いメモを入力しても、印刷時は自動で最大3行に収まるためレイアウトが崩れません。
+                    </div>
+                    <div>
+                        <strong>🧠 賢い時間計算ロジック</strong><br>
+                        ・<strong>2人並行診察</strong>：上から2人ずつペアになり、同じ時間枠に割り当てられます。<br>
+                        ・<strong>移動時間・引き継ぎ時間</strong>：次のペアに移る際、および同じ患者さんで医師から衛生士へ切り替わる際に、自動的に「1分」の移動時間を挟むため、時間が被りません。
                     </div>
                 </div>
+
+                <h4 style="color: var(--primary); font-size: 1.05rem; margin-top: 1.75rem; margin-bottom: 0.5rem; border-left: 4px solid var(--primary); padding-left: 0.5rem;">
+                    🔒 データの保存と安全なバックアップ
+                </h4>
                 
-                <h4>③ PDF保存・印刷する（A4サイズ）</h4>
-                <p>画面上部のタブから「② 往診リスト印刷」または「③ FAX送信表印刷」を開きます。</p>
-                <p><strong>【往診リスト印刷タブの場合】</strong><br>
-                ・<strong>「PDFダウンロード」ボタン</strong>：ボタンを押すだけで直接PDFファイルがダウンロードされます（手軽ですが、中身は画像データになるため文字のコピペ等はできません）。<br>
-                ・<strong>「プリンター印刷 (A4)」ボタン</strong>：紙に印刷できます。また、表示される設定画面で送信先を<strong>「PDFに保存」</strong>にして保存すると、<strong>文字のコピペや検索ができる高品質なPDF</strong>を作成できます。文字を検索・コピーしたい場合はこちらの方法がおすすめです。<br>
-                ・<strong>「印刷＆保存 (A4)」ボタン</strong>：印刷した後に、自動的にExcelデータベースへの保存も実行されます。印刷と保存を一度に済ませたい場合はこのボタンが便利です。</p>
-                <p><strong>【FAX送信表・往診回数表タブの場合】</strong><br>
-                ・<strong>「FAX（または回数表）を印刷」ボタン</strong>：紙への印刷、およびブラウザ経由でのPDF保存が可能です。</p>
-                
-                <div style="margin: 0.75rem 0; padding: 0.6rem 1rem; background-color: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 0.5rem; font-size: 0.82rem; color: #92400e;">
-                    <strong>💡 ヒント：</strong>印刷プレビュー上で「備考」セルをクリックすると、その場でメモを直接編集できます。画面上に表示される薄いガイド（「クリックして入力...」の文字や青い枠線）は、印刷やPDFには一切出力されませんのでご安心ください。
-                </div>
-                
-                <!-- イラスト（Step 3） -->
-                <div style="display: flex; justify-content: center; margin: 1rem 0;">
-                    <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1.25rem; border: 1px solid var(--border); border-radius: 0.75rem; background-color: #fafafa; width: 85%; max-width: 320px; justify-content: center;">
-                        <i data-lucide="printer" style="width: 28px; height: 28px; color: var(--text-dark);"></i>
-                        <span style="font-size: 1.25rem; color: var(--text-muted);">➔</span>
-                        <div style="border: 2px solid #ccc; width: 34px; height: 44px; background: white; box-shadow: 2px 2px 4px rgba(0,0,0,0.08); display: flex; flex-direction: column; justify-content: space-around; padding: 4px; border-radius: 2px;">
-                            <div style="height: 2px; background: #94a3b8; width: 80%;"></div>
-                            <div style="height: 2px; background: #cbd5e1; width: 100%;"></div>
-                            <div style="height: 2px; background: #cbd5e1; width: 60%;"></div>
-                        </div>
-                        <div style="font-size: 0.8rem; font-weight: bold; color: var(--text-dark); margin-left: 0.25rem;">A4用紙に印刷</div>
-                    </div>
-                </div>
-                
-                <h4>④ 実績を保存する（とても重要）</h4>
-                <p>往診が終わったら、データベースを保存して往診履歴を更新しましょう。以下のいずれかの方法で保存できます。</p>
-                <ol>
-                    <li><strong>「印刷＆保存 (A4)」ボタン</strong>（② 往診リスト印刷タブ）：印刷と保存が一度にできるので<strong>おすすめ</strong>です。</li>
-                    <li><strong>「結果をデータベースへ保存 (Excel出力)」ボタン</strong>（② 往診リスト印刷タブ または ④ 往診回数表印刷タブ）：保存のみを行いたい場合に使います。</li>
-                    <li><strong>「保存 (Excel更新)」ボタン</strong>（患者一覧の上部）：いつでも手動で保存できます。</li>
-                </ol>
-                <p style="font-size: 0.85rem; color: var(--text-muted);">※通常の「プリンター印刷 (A4)」や「PDFダウンロード」ボタンでは自動保存は行われません。印刷だけ先にしたい場合はそちらをご利用ください。</p>
-                
-                <!-- イラスト（Step 4） -->
-                <div style="display: flex; justify-content: center; margin: 1rem 0;">
-                    <div style="display: flex; flex-direction: column; align-items: center; gap: 0.35rem; padding: 0.75rem 1.5rem; border: 1px solid #10b981; border-radius: 0.75rem; background-color: #ecfdf5; color: #065f46; width: 85%; max-width: 320px; box-shadow: var(--shadow-sm);">
-                        <i data-lucide="download" style="width: 24px; height: 24px; color: #10b981;"></i>
-                        <span style="font-size: 0.85rem; font-weight: bold;">結果をデータベースへ保存</span>
-                        <div style="font-size: 0.7rem; color: #047857;">Excelファイルを上書き保存して完了！</div>
-                    </div>
-                </div>
-                
-                <div style="margin-top: 1.5rem; padding: 1rem; background-color: var(--primary-light); border-left: 4px solid var(--primary); border-radius: 0.5rem; font-size: 0.85rem; color: var(--primary-dark);">
-                    <strong>🔒 個人情報について：</strong><br>
-                    読み込んだExcelデータは、あなたのパソコンやスマートフォンのブラウザの中だけで安全に処理されており、インターネット上のサーバーに送信されることは一切ありません。外部への情報漏洩の心配はなく安全にご利用いただけます。
+                <p style="font-size: 0.9rem; margin-bottom: 0.75rem;">
+                    このアプリは、個人情報をインターネットのサーバーに送信せず、お使いのパソコンのブラウザ内だけで安全に処理します。
+                </p>
+
+                <div style="background-color: #f8fafc; border: 1px solid var(--border); padding: 1rem; border-radius: 0.5rem; font-size: 0.88rem; color: var(--text-dark);">
+                    <strong>📥 自動下書き保存とバックアップについて：</strong>
+                    <ul style="padding-left: 1.25rem; margin-top: 0.4rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                        <li><strong>自動下書き保存</strong>：選択したメンバーや入力したメモは、日付・施設ごとに自動保存されます。ブラウザを閉じても、同じ日付・施設を選べばいつでも復元されます。</li>
+                        <li><strong>PCへの保存（バックアップ）</strong>：PCの故障や買い替え、履歴の完全削除に備え、サイドバーの「バックアップ」ボタンからこれまでの全データをファイルに保存できます。</li>
+                        <li><strong>データの復元</strong>：「復元」ボタンからバックアップファイルを読み込むことで、別のPCや新しい環境へ一瞬でこれまでのすべてのデータを上書き合体（マージ）できます。</li>
+                        <li><strong>推奨バックアップ頻度</strong>：月1回、または月初に予定を立てたタイミングでバックアップファイルをダウンロードしておくことをおすすめします。</li>
+                    </ul>
                 </div>
             </div>
         </div>
     </div>
+
 </body>
 </html>
