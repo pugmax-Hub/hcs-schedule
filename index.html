@@ -2461,33 +2461,140 @@
                     return;
                 }
 
-                // 未来実績の検知と警告ダイアログ
-                const futureVisits = patient.visits.filter(v => v.startsWith(targetMonth) && v > targetDateStr);
-                if (futureVisits.length > 0) {
-                    const futureVisitsStr = futureVisits.map(v => v.substring(5)).join(', '); // 月日のみ表示
-                    const proceed = confirm(
-                        `【警告】${patient.name} さんは、現在の設定日（${targetDateStr.substring(5)}）よりも未来の日付（${futureVisitsStr}）で診察実績がすでに登録されています。\n\n` +
-                        `日付の選択ミスなどではありませんか？このまま「過去の診察」として追加してもよろしいですか？`
-                    );
-                    if (!proceed) {
-                        renderPatientTable(); // チェックボックスのチェックを外す
-                        return;
+                const monthVisits = patient.visits.filter(v => v.startsWith(targetMonth)).sort();
+                
+                // すでに2回以上の実績がある場合
+                if (monthVisits.length >= 2) {
+                    const d1 = monthVisits[0];
+                    const d2 = monthVisits[monthVisits.length - 1];
+
+                    if (targetDateStr < d1) {
+                        // 1. 1回目より過去 ➔ 現行の未来実績エラー表記(confirm)で確認
+                        const proceed = confirm(
+                            `【警告】${patient.name} さんは、現在の設定日（${targetDateStr.substring(5)}）よりも未来の日付（${monthVisits.map(v => v.substring(5)).join(', ')}）で診察実績がすでに登録されています。\n\n` +
+                            `日付の選択ミスなどではありませんか？このまま「過去の診察（1回目の修正）」として追加してもよろしいですか？`
+                        );
+                        if (proceed) {
+                            // 1回目(d1)を削除し、targetを追加
+                            patient.visits = patient.visits.filter(v => v !== d1);
+                            patient.visits.push(targetDateStr);
+                            patient.visits.sort();
+                        } else {
+                            renderPatientTable();
+                            return;
+                        }
+                    } else if (targetDateStr > d2) {
+                        // 2. 2回目より未来 ➔ すでに2回ある警告(confirm)で確認
+                        const proceed = confirm(
+                            `【確認】${patient.name} さんはすでに当月2回の診察実績（${d1.substring(5)}, ${d2.substring(5)}）が登録されています。\n\n` +
+                            `2回目の診察日（${d2.substring(5)}）を ${targetDateStr.substring(5)} に変更（上書き）してもよろしいですか？`
+                        );
+                        if (proceed) {
+                            // 2回目(d2)を削除し、targetを追加
+                            patient.visits = patient.visits.filter(v => v !== d2);
+                            patient.visits.push(targetDateStr);
+                            patient.visits.sort();
+                        } else {
+                            renderPatientTable();
+                            return;
+                        }
+                    } else {
+                        // 3. 実績と実績の間（中間） ➔ カスタムモーダルを表示
+                        showRepairModal(patient, targetDateStr, targetMonth, monthVisits);
+                        return; // 選択を待つため一旦処理を抜ける
+                    }
+                } else {
+                    // 既存実績が1つ以下で、かつそれが未来日付の場合のみ従来の警告
+                    const futureVisits = monthVisits.filter(v => v > targetDateStr);
+                    if (futureVisits.length > 0) {
+                        const futureVisitsStr = futureVisits.map(v => v.substring(5)).join(', ');
+                        const proceed = confirm(
+                            `【警告】${patient.name} さんは、現在の設定日（${targetDateStr.substring(5)}）よりも未来の日付（${futureVisitsStr}）で診察実績がすでに登録されています。\n\n` +
+                            `日付の選択ミスなどではありませんか？このまま「過去の診察」として追加してもよろしいですか？`
+                        );
+                        if (!proceed) {
+                            renderPatientTable();
+                            return;
+                        }
                     }
                 }
             }
             
+            // 通常追加または解除
             togglePatientActiveNoRender(patient, isChecked, targetMonth);
-
             renderSelectedList();
             calculateScheduleTimes();
             updateReports();
             updateSelectedCountBadges();
+            saveDraft();
+        }
+
+        // 過去日修正用カスタムモーダル表示
+        function showRepairModal(patient, targetDateStr, targetMonth, monthVisits) {
+            const modal = document.getElementById('repair-modal');
+            const textEl = document.getElementById('repair-modal-text');
+            const optionsEl = document.getElementById('repair-modal-options');
             
-            saveDraft(); // 下書き保存
+            const targetShow = targetDateStr.substring(5); // "MM/DD"
+            const sortedVisits = [...monthVisits].sort();
+            const d1 = sortedVisits[0];
+            const d2 = sortedVisits[sortedVisits.length - 1];
+
+            textEl.innerHTML = `
+                <strong>${patient.name}</strong> さんは、今回の設定日（<strong>${targetShow}</strong>）の前後にすでに診察実績（${d1.substring(5)}, ${d2.substring(5)}）が登録されています。<br>
+                どのような修正を行いますか？
+            `;
+
+            optionsEl.innerHTML = `
+                <button class="btn" style="text-align: left; font-size: 0.85rem; padding: 0.65rem 0.85rem; justify-content: flex-start; gap: 0.5rem; background-color: var(--primary); color: white;" onclick="resolveRepair('${patient.id}', 'replace', '${d1}', '${targetDateStr}', '${targetMonth}')">
+                    <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
+                    1回目の修正（${d1.substring(5)} ➔ <strong>${targetShow}</strong>）
+                </button>
+                <button class="btn" style="text-align: left; font-size: 0.85rem; padding: 0.65rem 0.85rem; justify-content: flex-start; gap: 0.5rem; background-color: var(--secondary); color: white;" onclick="resolveRepair('${patient.id}', 'replace', '${d2}', '${targetDateStr}', '${targetMonth}')">
+                    <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
+                    2回目の修正（${d2.substring(5)} ➔ <strong>${targetShow}</strong>）
+                </button>
+                <button class="btn btn-secondary" style="text-align: left; font-size: 0.85rem; padding: 0.65rem 0.85rem; justify-content: flex-start; gap: 0.5rem; background-color: #cbd5e1; color: #334155; border: none; margin-top: 0.25rem;" onclick="resolveRepair('${patient.id}', 'cancel', null, null, null)">
+                    <i data-lucide="x-circle" style="width: 16px; height: 16px;"></i>
+                    キャンセル（追加しない）
+                </button>
+            `;
+
+            initLucide();
+            modal.style.display = 'flex';
+        }
+
+        // 過去日修正アクション実行
+        function resolveRepair(patientId, action, oldDate, newDate, targetMonth) {
+            const modal = document.getElementById('repair-modal');
+            modal.style.display = 'none';
+
+            const p = appState.patients.find(pat => pat.id === patientId);
+            if (!p) return;
+
+            if (action === 'cancel') {
+                renderPatientTable();
+                return;
+            }
+
+            if (action === 'replace' && oldDate) {
+                p.visits = p.visits.filter(v => v !== oldDate);
+                p.visits.push(newDate);
+                p.visits.sort();
+            }
+
+            togglePatientActiveNoRender(p, true, targetMonth);
+            renderPatientTable();
+            renderSelectedList();
+            calculateScheduleTimes();
+            updateReports();
+            updateSelectedCountBadges();
+            saveDraft();
         }
 
         // 再描画を伴わない内部用トグル関数（一括操作用）
         function togglePatientActiveNoRender(patient, isChecked, targetMonth) {
+            const targetDateStr = formatDateString(new Date(appState.selectedDate));
             if (isChecked) {
                 if (!appState.activePatients.some(ap => ap.id === patient.id)) {
                     const pCopy = {...patient};
@@ -3594,6 +3701,24 @@
                         <li><strong>データの復元</strong>：「復元」ボタンからバックアップファイルを読み込むことで、別のPCや新しい環境へ一瞬でこれまでのすべてのデータを上書き合体（マージ）できます。</li>
                         <li><strong>推奨バックアップ頻度</strong>：月1回、または月初に予定を立てたタイミングでバックアップファイルをダウンロードしておくことをおすすめします。</li>
                     </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 過去日修正用カスタム選択モーダル -->
+    <div class="modal-overlay" id="repair-modal" style="display: none; z-index: 3000;">
+        <div class="modal-card" style="max-width: 400px; border-radius: 0.75rem; box-shadow: var(--shadow-lg);">
+            <div class="modal-header" style="padding: 1rem 1.25rem; background-color: #fafafa;">
+                <h3 class="modal-title" style="font-size: 1rem; font-weight: 800;">
+                    <i data-lucide="compass" style="width: 20px; height: 20px; color: var(--primary);"></i>
+                    診察日の修正選択
+                </h3>
+            </div>
+            <div class="modal-body" style="padding: 1.25rem;">
+                <p id="repair-modal-text" style="font-size: 0.88rem; color: var(--text-dark); margin-bottom: 1.25rem; line-height: 1.5;"></p>
+                <div style="display: flex; flex-direction: column; gap: 0.6rem;" id="repair-modal-options">
+                    <!-- JSで動的にボタンテキストやアクションを割り当て -->
                 </div>
             </div>
         </div>
