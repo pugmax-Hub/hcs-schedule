@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>歯科往診スケジュール管理システム</title>
-    <!-- SheetJS (Excel読み込み用) -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- スタイル・印刷設定対応版のSheetJS (背景色、罫線、B5ページ設定の書き込みが可能) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
     <!-- SortableJS (ドラッグ＆ドロップ並び替え用) -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <!-- Lucide Icons (アイコン用) -->
@@ -1315,6 +1315,29 @@
         overflow: hidden !important;
     }
 }
+
+/* 印刷時およびプレビュー時のB5横用の設定 */
+@media print {
+    #print-receipt-page {
+        width: 100% !important;
+        min-height: auto !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        page-break-after: avoid;
+        page-break-inside: avoid;
+    }
+    .receipt-break-page {
+        page-break-before: always !important;
+        margin-top: 15mm;
+    }
+}
+
+/* 51〜54名のときの縮小レイアウト用CSS */
+.receipt-table-condensed th, 
+.receipt-table-condensed td {
+    padding: 2px 3px !important;
+    font-size: 7.5pt !important;
+}
 </style>
 </head>
 <body>
@@ -1394,9 +1417,39 @@
                 <input type="date" id="visit-date" class="date-input">
             </div>
 
-            <div class="sidebar-section">
-                <label for="start-time">訪問開始時間</label>
-                <input type="time" id="start-time" class="time-input" value="09:00">
+            <!-- 選択中の施設情報（常に表示・編集可） -->
+            <div class="sidebar-section" style="border-top: 1px solid #334155; padding-top: 1.25rem; margin-top: 0.5rem;" id="facility-detail-section">
+                <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; font-weight: bold; color: var(--text-light);">
+                    <i data-lucide="building" style="width: 18px; height: 18px; color: #10b981;"></i>
+                    選択中の施設情報
+                </div>
+                <div style="background-color: #1e293b; padding: 0.75rem; border-radius: 0.375rem; border: 1px solid #334155; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        <span style="color: #94a3b8; font-weight: bold;">施設名</span>
+                        <span id="fac-detail-name" style="color: #f8fafc; font-weight: bold; word-break: break-all;">-</span>
+                    </div>
+                    <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        <span style="color: #94a3b8; font-weight: bold;">住所</span>
+                        <span id="fac-detail-addr" style="color: #f8fafc; word-break: break-all;">-</span>
+                    </div>
+                    <div style="font-size: 0.85rem; display: flex; gap: 1rem;">
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
+                            <span style="color: #94a3b8; font-weight: bold;">TEL</span>
+                            <span id="fac-detail-tel" style="color: #f8fafc; word-break: break-all;">-</span>
+                        </div>
+                        <div style="flex: 1; display: flex; flex-direction: column; gap: 0.25rem;">
+                            <span style="color: #94a3b8; font-weight: bold;">FAX</span>
+                            <span id="fac-detail-fax" style="color: #f8fafc; word-break: break-all;">-</span>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem; border-top: 1px dashed #334155; padding-top: 0.5rem;">
+                        <span style="color: #94a3b8; font-weight: bold; display: flex; justify-content: space-between; align-items: center;">
+                            <span>施設備考（編集可）</span>
+                            <span style="font-size: 7.5pt; color: #10b981; font-weight: normal;">※保存時に適用されます</span>
+                        </span>
+                        <textarea id="fac-detail-memo" class="textarea-input" style="width: 100%; height: 5.5rem; background-color: #0f172a; color: #f8fafc; border: 1px solid #475569; border-radius: 0.25rem; padding: 4px 6px; font-size: 0.85rem; resize: none; line-height: 1.35; box-sizing: border-box;" placeholder="例：１Fおふろ月・木&#10;２Fおふろ火・金"></textarea>
+                    </div>
+                </div>
             </div>
 
             <!-- 歯科医院情報の設定（折りたたみ可能） -->
@@ -1446,12 +1499,7 @@
                 <input type="file" id="import-file-input" style="display: none;" accept=".json" onchange="importDrafts(event)">
             </div>
 
-            <div style="margin-top: auto; padding-top: 1rem; border-top: 1px solid #334155;">
-                <button class="btn btn-secondary" id="reselect-file-btn" style="width: 100%;">
-                    <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
-                    別ファイルを選択する
-                </button>
-            </div>
+
         </aside>
 
         <!-- 右側メインエリア -->
@@ -1473,6 +1521,10 @@
                 <button class="tab-btn" data-tab="report-times-tab">
                     <i data-lucide="calendar-check" style="width: 18px; height: 18px;"></i>
                     ④ 往診回数表印刷
+                </button>
+                <button class="tab-btn" data-tab="report-receipt-tab">
+                    <i data-lucide="receipt" style="width: 18px; height: 18px;"></i>
+                    ⑤ 受付集計表
                 </button>
             </div>
 
@@ -1718,6 +1770,42 @@
                     </div>
                 </div>
             </div>
+
+            <!-- ⑤ 受付集計表タブ -->
+            <div class="tab-content" id="report-receipt-tab">
+                <div class="preview-controls">
+                    <span style="font-weight: bold; color: var(--text-dark);">📊 B5縦サイズに最適化された受付集計表です。</span>
+                    <div class="btn-group">
+                        <button class="btn btn-success" onclick="exportReceiptExcel()">
+                            <i data-lucide="download" style="width: 18px; height: 18px;"></i>
+                            受付集計表をエクセルへ出力
+                        </button>
+                    </div>
+                </div>
+                <div class="print-area-wrapper" style="background-color: #64748b; padding: 2rem; display: flex; justify-content: center;">
+                    <!-- B5縦（182mm x 257mm）のプレビュー枠 -->
+                    <div class="a4-page" id="print-receipt-page" style="width: 182mm; min-height: 257mm; background-color: white; padding: 10mm; color: black; box-sizing: border-box;">
+                        <span class="print-indicator" style="position: absolute; top: 5px; right: 10px; font-size: 8pt; color: #64748b;">印刷プレビュー（B5縦）</span>
+                        <div class="report-header" style="border-bottom: 2px solid #000; padding-bottom: 0.5rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 0.5rem;">
+                            <div>
+                                <div class="report-title" id="receipt-report-title" style="font-size: 15pt; font-weight: 700;">〇〇 受付集計表</div>
+                                <div style="font-size: 9pt; color: #555; margin-top: 0.25rem; display: flex; gap: 1.5rem;">
+                                    <span>請・領渡し日： _________________</span>
+                                    <span>領収書受取日： _________________</span>
+                                </div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div id="receipt-report-meta" style="font-size: 9pt; font-weight: bold; margin-bottom: 0.25rem;">2026年05月</div>
+                                <div style="font-size: 13pt; font-weight: 800; color: var(--primary);" id="receipt-total-amount">請求金額合計： ￥ 0</div>
+                            </div>
+                        </div>
+                        
+                        <div id="receipt-table-container">
+                            <!-- JSで動的生成 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -1742,7 +1830,8 @@
             patients: [],       // 現在の施設の全患者マスター
             activePatients: [], // 本日往診する患者リスト（順序維持）
             startTime: '09:00',
-            clinicInfo: {...defaultClinicInfo}
+            clinicInfo: {...defaultClinicInfo},
+            facilityDetails: {}
         };
 
         // Shiftキーでの範囲選択用
@@ -1758,10 +1847,32 @@
             setupMobileEvents();
             setupHelpEvents();
             
-            // 今日の日付をデフォルト設定
+            // 最後に選択した日付（無ければ今日の日付）を初期値として設定
             const today = new Date().toISOString().split('T')[0];
-            document.getElementById('visit-date').value = today;
-            appState.selectedDate = today;
+            let savedDate = localStorage.getItem('hcs_selected_date') || today;
+            
+            // 文字列としての "undefined" や "null" を排除
+            if (savedDate === 'undefined' || savedDate === 'null') {
+                savedDate = today;
+            }
+            // スラッシュ区切りをハイフン区切りに変換 (HTML5 input type="date" の要件)
+            if (savedDate && savedDate.includes('/')) {
+                savedDate = savedDate.replace(/\//g, '-');
+            }
+            // YYYY-MM-DD 形式になっていない場合は今日の日付にフォールバック
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(savedDate)) {
+                savedDate = today;
+            }
+            
+            document.getElementById('visit-date').value = savedDate;
+            // 万が一ブラウザに拒否されて空欄になった場合のフォールバックガード
+            if (!document.getElementById('visit-date').value) {
+                document.getElementById('visit-date').value = today;
+                appState.selectedDate = today;
+            } else {
+                appState.selectedDate = savedDate;
+            }
 
             // 訪問開始時間の初期値読み込み (LocalStorage)
             const savedStartTime = localStorage.getItem('hcs_start_time') || '09:00';
@@ -1845,6 +1956,10 @@
                     const targetId = tab.dataset.tab;
                     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
                     document.getElementById(targetId).classList.add('active');
+                    
+                    if (targetId === 'report-receipt-tab') {
+                        renderReceiptPreview();
+                    }
                 });
             });
         }
@@ -1942,8 +2057,11 @@
                         loadClinicSettingsFromExcel(workbook.Sheets['設定']);
                     }
                     
-                    // 「設定」以外の通常シートを抽出
-                    appState.sheets = workbook.SheetNames.filter(name => name !== '設定');
+                    // 施設詳細情報を読み込む
+                    loadFacilityDetailsFromExcel(workbook);
+                    
+                    // 「設定」「施設詳細」および「_受付集計」以外の通常シートを抽出
+                    appState.sheets = workbook.SheetNames.filter(name => name !== '設定' && name !== '施設詳細' && !name.endsWith('_受付集計'));
                     
                     if (appState.sheets.length === 0) {
                         alert('有効な施設シートがExcel内にありません。');
@@ -1953,6 +2071,23 @@
                     // アプリ画面の表示切り替え
                     document.getElementById('welcome-screen').style.display = 'none';
                     document.getElementById('app-layout').style.display = 'flex';
+
+                    // 非表示から表示へ切り替わったため、日付と開始時間を再セット（ブラウザの表示バグ防止）
+                    const dateInput = document.getElementById('visit-date');
+                    if (dateInput) {
+                        if (appState.selectedDate) {
+                            dateInput.value = appState.selectedDate;
+                        }
+                        if (!dateInput.value) {
+                            const today = new Date().toISOString().split('T')[0];
+                            dateInput.value = today;
+                            appState.selectedDate = today;
+                        }
+                    }
+                    const startInput = document.getElementById('start-time');
+                    if (startInput && appState.startTime) {
+                        startInput.value = appState.startTime;
+                    }
 
                     // 施設選択のドロップダウン構築
                     const select = document.getElementById('facility-select');
@@ -1998,6 +2133,88 @@
             updateHeaderClinicName();
         }
 
+        // Excelの施設詳細シートから各施設の詳細情報を読み込む
+        function loadFacilityDetailsFromExcel(workbook) {
+            appState.facilityDetails = {};
+            
+            // 施設詳細と設定シート、および受付集計以外の施設名
+            const facilitySheets = workbook.SheetNames.filter(name => 
+                name !== '設定' && 
+                name !== '施設詳細' && 
+                !name.endsWith('_受付集計')
+            );
+            
+            // デフォルトの初期値をセット
+            facilitySheets.forEach(name => {
+                appState.facilityDetails[name] = {
+                    name: name,
+                    addr: '',
+                    tel: '',
+                    fax: '',
+                    memo: ''
+                };
+            });
+            
+            // 「鴻巣フラワーパレス」のデフォルト備考欄初期値
+            if (appState.facilityDetails['鴻巣フラワーパレス']) {
+                appState.facilityDetails['鴻巣フラワーパレス'].addr = '埼玉県鴻巣市神明２－９－２３';
+                appState.facilityDetails['鴻巣フラワーパレス'].tel = '048-596-5254';
+                appState.facilityDetails['鴻巣フラワーパレス'].fax = '048-596-5254';
+                appState.facilityDetails['鴻巣フラワーパレス'].memo = '１Fおふろ月・木\n２Fおふろ火・金';
+            }
+            if (appState.facilityDetails['川里苑']) {
+                appState.facilityDetails['川里苑'].addr = '埼玉県鴻巣市関新田１１５';
+                appState.facilityDetails['川里苑'].tel = '048-569-1234';
+                appState.facilityDetails['川里苑'].fax = '048-569-1235';
+                appState.facilityDetails['川里苑'].memo = '';
+            }
+
+            if (workbook.SheetNames.includes('施設詳細')) {
+                try {
+                    const ws = workbook.Sheets['施設詳細'];
+                    const data = XLSX.utils.sheet_to_json(ws);
+                    data.forEach(row => {
+                        const facName = row['施設名'] || row['施設'] || '';
+                        if (facName && appState.facilityDetails[facName]) {
+                            appState.facilityDetails[facName].addr = row['住所'] || '';
+                            appState.facilityDetails[facName].tel = row['電話番号'] || row['℡'] || row['TEL'] || '';
+                            appState.facilityDetails[facName].fax = row['FAX'] || row['Fax'] || '';
+                            appState.facilityDetails[facName].memo = row['備考'] || row['備考欄'] || '';
+                        }
+                    });
+                } catch (e) {
+                    console.error('施設詳細の読み込みに失敗しました:', e);
+                }
+            }
+        }
+
+        // サイドバーの施設詳細カードを更新
+        function updateFacilityDetailSidebar() {
+            const currentFac = appState.currentSheet;
+            const nameEl = document.getElementById('fac-detail-name');
+            const addrEl = document.getElementById('fac-detail-addr');
+            const telEl = document.getElementById('fac-detail-tel');
+            const faxEl = document.getElementById('fac-detail-fax');
+            const memoEl = document.getElementById('fac-detail-memo');
+            
+            if (!nameEl) return;
+            
+            if (currentFac && appState.facilityDetails && appState.facilityDetails[currentFac]) {
+                const details = appState.facilityDetails[currentFac];
+                nameEl.textContent = details.name || '-';
+                addrEl.textContent = details.addr || '-';
+                telEl.textContent = details.tel || '-';
+                faxEl.textContent = details.fax || '-';
+                memoEl.value = details.memo || '';
+            } else {
+                nameEl.textContent = currentFac || '-';
+                addrEl.textContent = '-';
+                telEl.textContent = '-';
+                faxEl.textContent = '-';
+                memoEl.value = '';
+            }
+        }
+
         // コントロール系のイベント定義
         function setupControlEvents() {
             document.getElementById('facility-select').addEventListener('change', (e) => {
@@ -2006,7 +2223,17 @@
             });
 
             document.getElementById('visit-date').addEventListener('change', (e) => {
-                appState.selectedDate = e.target.value;
+                const val = e.target.value;
+                const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                if (val && dateRegex.test(val)) {
+                    appState.selectedDate = val;
+                    localStorage.setItem('hcs_selected_date', val); // 最後に選択した日付を記憶
+                } else {
+                    const today = new Date().toISOString().split('T')[0];
+                    appState.selectedDate = today;
+                    localStorage.setItem('hcs_selected_date', today);
+                    document.getElementById('visit-date').value = today;
+                }
                 autoSelectPatientsByDate();
             });
 
@@ -2017,16 +2244,21 @@
                 updateReports();
             });
 
-            document.getElementById('reselect-file-btn').addEventListener('click', () => {
-                if (confirm('別ファイルを選択しますか？ 現在の編集状態はリセットされます。')) {
-                    document.getElementById('app-layout').style.display = 'none';
-                    document.getElementById('welcome-screen').style.display = 'flex';
-                    document.getElementById('file-input').value = '';
-                    appState.workbook = null;
-                    appState.fileHandle = null; // ファイルハンドルをリセット
-                    appState.activePatients = [];
-                }
-            });
+
+            
+            // 施設詳細の備考変更イベントを追加
+            const memoEl = document.getElementById('fac-detail-memo');
+            if (memoEl) {
+                const syncMemo = (e) => {
+                    const currentFac = appState.currentSheet;
+                    if (currentFac && appState.facilityDetails && appState.facilityDetails[currentFac]) {
+                        appState.facilityDetails[currentFac].memo = e.target.value;
+                    }
+                };
+                memoEl.addEventListener('input', syncMemo);
+                memoEl.addEventListener('change', syncMemo);
+                memoEl.addEventListener('blur', syncMemo);
+            }
         }
 
         // 日付フォーマット変換ヘルパー
@@ -2130,7 +2362,26 @@
                     karteNo: getCellVal(colKarte),
                     name: name,
                     denture: getCellVal(colDenture),
-                    visits: colVisits.map(col => formatDateString(getCellVal(col.index))).filter(d => d !== ''),
+                    visits: (() => {
+                        const rawVisits = colVisits.map(col => formatDateString(getCellVal(col.index))).filter(d => d !== '');
+                        // 同一月に最大2回までに制限
+                        const visitsByMonth = {};
+                        rawVisits.forEach(v => {
+                            const m = v.substring(0, 7); // "YYYY/MM"
+                            if (!visitsByMonth[m]) visitsByMonth[m] = [];
+                            visitsByMonth[m].push(v);
+                        });
+                        let pruned = [];
+                        Object.keys(visitsByMonth).sort().forEach(m => {
+                            let dates = visitsByMonth[m].sort();
+                            if (dates.length > 2) {
+                                // 3回以上ある場合は最初と最後（1回目と2回目）を残す
+                                dates = [dates[0], dates[dates.length - 1]];
+                            }
+                            pruned = pruned.concat(dates);
+                        });
+                        return pruned.sort();
+                    })(),
                     precautions: getCellVal(colPrecautions),
                     memo: memoVal,
                     nutrition: nutritionVal,
@@ -2153,6 +2404,7 @@
             document.getElementById('setup-facility-title').textContent = `${sheetName} 患者一覧`;
 
             autoSelectPatientsByDate();
+            updateFacilityDetailSidebar();
         }
 
         // ローカル下書き（選択状態と本日メモ）を保存
@@ -2225,7 +2477,7 @@
             // 病院情報と開始時間もバックアップに含める
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && (key.startsWith('hcs_draft_') || key === 'hcs_clinic_info' || key === 'hcs_start_time')) {
+                if (key && (key.startsWith('hcs_draft_') || key === 'hcs_clinic_info' || key === 'hcs_start_time' || key === 'hcs_selected_date')) {
                     backup[key] = localStorage.getItem(key);
                 }
             }
@@ -2255,7 +2507,7 @@
                     const imported = JSON.parse(e.target.result);
                     let count = 0;
                     for (const key in imported) {
-                        if (key.startsWith('hcs_draft_') || key === 'hcs_clinic_info' || key === 'hcs_start_time') {
+                        if (key.startsWith('hcs_draft_') || key === 'hcs_clinic_info' || key === 'hcs_start_time' || key === 'hcs_selected_date') {
                             localStorage.setItem(key, imported[key]);
                             count++;
                         }
@@ -3258,6 +3510,13 @@
         async function exportUpdatedExcel() {
             if (!appState.workbook) return;
             
+            // 画面上の最新の施設備考を同期
+            const currentFac = appState.currentSheet;
+            const memoEl = document.getElementById('fac-detail-memo');
+            if (currentFac && memoEl && appState.facilityDetails && appState.facilityDetails[currentFac]) {
+                appState.facilityDetails[currentFac].memo = memoEl.value;
+            }
+            
             const targetDateStr = formatDateString(new Date(appState.selectedDate));
             const visitDateSlash = targetDateStr; // "YYYY/MM/DD"
 
@@ -3332,6 +3591,24 @@
                             currentVisits = currentVisits.filter(v => v !== visitDateSlash);
                         }
                         
+                        // 同一月に最大2回までに制限
+                        const visitsByMonth = {};
+                        currentVisits.forEach(v => {
+                            const m = v.substring(0, 7); // "YYYY/MM"
+                            if (!visitsByMonth[m]) visitsByMonth[m] = [];
+                            visitsByMonth[m].push(v);
+                        });
+                        let pruned = [];
+                        Object.keys(visitsByMonth).sort().forEach(m => {
+                            let dates = visitsByMonth[m].sort();
+                            if (dates.length > 2) {
+                                // 3回以上ある場合は最初と最後（1回目と2回目）を残す
+                                dates = [dates[0], dates[dates.length - 1]];
+                            }
+                            pruned = pruned.concat(dates);
+                        });
+                        currentVisits = pruned;
+
                         // 日付順にソートして、列数分（最大4つ等）の最新日付のみ残す
                         currentVisits.sort();
                         if (currentVisits.length > colVisitIdxs.length) {
@@ -3369,6 +3646,35 @@
             } else {
                 appState.workbook.SheetNames.push(settingsSheetName);
                 appState.workbook.Sheets[settingsSheetName] = wsSettings;
+            }
+
+            // 3. 「施設詳細」シートの作成または更新 (施設情報の永続化)
+            const facSheetName = '施設詳細';
+            const facData = [
+                ['施設名', '住所', '電話番号', 'FAX', '備考']
+            ];
+            
+            if (appState.facilityDetails) {
+                Object.keys(appState.facilityDetails).sort().forEach(name => {
+                    const d = appState.facilityDetails[name];
+                    facData.push([
+                        d.name || name,
+                        d.addr || '',
+                        d.tel || '',
+                        d.fax || '',
+                        d.memo || ''
+                    ]);
+                });
+            }
+            
+            const wsFac = XLSX.utils.aoa_to_sheet(facData);
+            wsFac['!cols'] = [{wch: 20}, {wch: 35}, {wch: 15}, {wch: 15}, {wch: 40}];
+            
+            if (appState.workbook.SheetNames.includes(facSheetName)) {
+                appState.workbook.Sheets[facSheetName] = wsFac;
+            } else {
+                appState.workbook.SheetNames.push(facSheetName);
+                appState.workbook.Sheets[facSheetName] = wsFac;
             }
 
             const filename = `往診データベース_${visitDateSlash.replace(/\//g, '')}.xlsx`;
@@ -3617,6 +3923,439 @@
             exportUpdatedExcel();
         }
 
+        // 選択された年月における、その施設の一意の往診予定日（実績日）を取得
+        function getActiveDatesInMonth() {
+            if (!appState.selectedDate) return [];
+            const targetMonth = appState.selectedDate.substring(0, 7); // "YYYY-MM"
+            const datesSet = new Set();
+            
+            appState.patients.forEach(p => {
+                p.visits.forEach(v => {
+                    if (v.replace(/\//g, '-').startsWith(targetMonth)) {
+                        datesSet.add(v);
+                    }
+                });
+            });
+            
+            const todayStr = formatDateString(new Date(appState.selectedDate));
+            if (todayStr.replace(/\//g, '-').startsWith(targetMonth)) {
+                const hasActiveCompleted = appState.activePatients.some(ap => ap.status === 'completed');
+                if (hasActiveCompleted) {
+                    datesSet.add(todayStr);
+                }
+            }
+            
+            return Array.from(datesSet).sort();
+        }
+
+        // B5受付集計表プレビューのレンダリング
+        function renderReceiptPreview() {
+            const container = document.getElementById('receipt-table-container');
+            if (!container) return;
+            
+            const activeDates = getActiveDatesInMonth();
+            const facilityName = appState.currentSheet || '施設';
+            const targetDate = new Date(appState.selectedDate);
+            const year = targetDate.getFullYear();
+            const month = targetDate.getMonth() + 1;
+            const targetMonth = `${year}/${String(month).padStart(2, '0')}`;
+            
+            document.getElementById('receipt-report-title').textContent = `${facilityName}  ${year}年${month}月`;
+            document.getElementById('receipt-report-meta').textContent = '';
+            
+            // 1. 当月往診実績がある患者のみを抽出（行ってない人を除外）
+            const activePatientsInMonth = appState.patients.filter(p => {
+                const hasVisit = p.visits.some(v => v.replace(/\//g, '-').startsWith(targetMonth.replace(/\//g, '-')));
+                const isActiveAndCompleted = appState.activePatients.some(ap => ap.id === p.id && ap.status === 'completed');
+                return hasVisit || isActiveAndCompleted;
+            });
+            
+            const N = activePatientsInMonth.length;
+            
+            // レイアウトモードの決定
+            let condensedClass = '';
+            let maxRows = N;
+            
+            if (N <= 50) {
+                // 50名以下：50行枠で1ページ
+                maxRows = 50;
+            } else if (N >= 51 && N <= 54) {
+                // 51〜54名：縮小して1ページ
+                condensedClass = 'receipt-table-condensed';
+                maxRows = N;
+            } else {
+                // 55名以上：2ページに分割
+                maxRows = N;
+            }
+            
+            // プレビュー上の「請求金額合計」は点数入力前なので￥0を表示
+            document.getElementById('receipt-total-amount').textContent = `請求金額合計： ￥ 0`;
+            
+            // テーブル作成ヘルパー
+            const makeTableHeader = () => {
+                let html = `
+                    <table class="report-table ${condensedClass}" style="width: 100%; border-collapse: collapse; margin-bottom: 0.5rem;">
+                        <thead>
+                            <tr>
+                                <th style="width: 12%; text-align: center; background-color: #9bc2e6;">カルテNo</th>
+                                <th style="width: 25%; text-align: left; background-color: #9bc2e6; padding-left: 6px;">氏名</th>
+                `;
+                activeDates.forEach(d => {
+                    html += `<th style="text-align: center; background-color: #9bc2e6;">${d.substring(5)}</th>`;
+                });
+                html += `
+                                <th style="width: 12%; text-align: center; background-color: #9bc2e6;">合計</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                return html;
+            };
+
+            let tableHtml = makeTableHeader();
+            let page2Html = '';
+            
+            for (let r = 0; r < maxRows; r++) {
+                // 55名以上かつ50名目の直後に改ページ（2ページ目を新規作成）
+                if (N >= 55 && r === 50) {
+                    tableHtml += `</tbody></table>`; // 1ページ目クローズ
+                    
+                    // 2ページ目のヘッダーとテーブルを開始 (印刷時に改ページされるクラスを付与)
+                    page2Html += `
+                        <div class="receipt-break-page" style="margin-top: 2rem; border-top: 1px dashed #64748b; padding-top: 1rem;">
+                            <div style="font-size: 10pt; font-weight: bold; margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
+                                <span>${facilityName} ${year}年${month}月 (2ページ目)</span>
+                            </div>
+                    `;
+                    page2Html += makeTableHeader();
+                }
+                
+                const p = activePatientsInMonth[r];
+                const isExist = !!p;
+                const name = isExist ? p.name : '';
+                const karte = isExist ? p.karteNo : '';
+                
+                let rowStyle = '';
+                if (isExist && p.isNonOral) {
+                    rowStyle = 'background-color: #f1f5f9;';
+                }
+                
+                const rowHtml = `
+                    <tr style="${rowStyle}">
+                        <td class="text-center" style="font-weight: bold;">${karte}</td>
+                        <td style="font-weight: bold; padding-left: 6px;">${name}</td>
+                        ${activeDates.map(d => {
+                            const visited = isExist && p.visits.includes(d);
+                            // 2. 背景色に !important を付与し、非経口行などの背景に隠れないように修正
+                            const cellStyle = visited ? 'background-color: #d8d3fd !important;' : '';
+                            return `<td style="${cellStyle}"></td>`;
+                        }).join('')}
+                        <td class="text-center" style="font-weight: bold; background-color: #fafafa;">0</td>
+                    </tr>
+                `;
+                
+                if (N >= 55 && r >= 50) {
+                    page2Html += rowHtml;
+                } else {
+                    tableHtml += rowHtml;
+                }
+            }
+            
+            // 各モードに応じた合計行の挿入
+            const sumRowHtml = `
+                <tr style="background-color: #9bc2e6; font-weight: bold;">
+                    <td colspan="2" style="text-align: right; padding-right: 1rem;">総合計</td>
+                    ${activeDates.map(() => '<td></td>').join('')}
+                    <td class="text-center" style="color: var(--primary);">0</td>
+                </tr>
+            `;
+
+            if (N <= 50) {
+                // 1ページ目の末尾に合計
+                tableHtml += sumRowHtml;
+                tableHtml += `</tbody></table>`;
+            } else if (N >= 51 && N <= 54) {
+                // 縮小1ページ目の末尾に合計
+                tableHtml += sumRowHtml;
+                tableHtml += `</tbody></table>`;
+            } else {
+                // 55名以上：2ページ目の末尾をクローズ
+                page2Html += `</tbody></table>`;
+                
+                // データの最終行から「3行あけて」総合計を出力
+                page2Html += `
+                    <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+                        <table class="report-table" style="width: 35%; border-collapse: collapse; float: right;">
+                            <tr style="background-color: #9bc2e6; font-weight: bold;">
+                                <td style="width: 50%; padding: 6px; text-align: center; border: 1px solid #000;">総合計</td>
+                                <td style="width: 50%; padding: 6px; text-align: center; border: 1px solid #000; color: var(--primary);">0</td>
+                            </tr>
+                        </table>
+                        <div style="clear: both;"></div>
+                    </div>
+                </div>`;
+            }
+            
+            container.innerHTML = tableHtml + page2Html;
+        }
+
+        // Excel列インデックスをアルファベット(A, B... Z, AA)に変換するヘルパー
+        function getExcelColumnLabel(colIdx) {
+            let label = '';
+            let temp = colIdx;
+            while (temp >= 0) {
+                label = String.fromCharCode((temp % 26) + 65) + label;
+                temp = Math.floor(temp / 26) - 1;
+            }
+            return label;
+        }
+
+        // 受付集計表をエクセルに追加して保存
+        // 受付集計表をエクセルに追加して保存
+        async function exportReceiptExcel() {
+            if (!appState.workbook) {
+                alert('Excelデータベースが読み込まれていません。');
+                return;
+            }
+            
+            const activeDates = getActiveDatesInMonth();
+            const facilityName = appState.currentSheet || '施設';
+            const targetDateStr = formatDateString(new Date(appState.selectedDate));
+            const yearMonth = targetDateStr.substring(0, 7);
+            
+            const newWb = XLSX.utils.book_new();
+            const sheetName = facilityName; // シート名は施設名のみにする
+            const ws = {};
+            
+            // スタイル定義
+            const borderThin = {
+                top: { style: 'thin', color: { rgb: 'CCCCCC' } },
+                bottom: { style: 'thin', color: { rgb: 'CCCCCC' } },
+                left: { style: 'thin', color: { rgb: 'CCCCCC' } },
+                right: { style: 'thin', color: { rgb: 'CCCCCC' } }
+            };
+            const titleStyle = {
+                font: { bold: true, name: 'MS Gothic', sz: 12 },
+                alignment: { vertical: 'center', horizontal: 'left' }
+            };
+            const labelStyle = {
+                font: { name: 'MS Gothic', sz: 10 },
+                alignment: { vertical: 'center', horizontal: 'left' }
+            };
+            const headerStyle = {
+                fill: { fgColor: { rgb: '9BC2E6' } }, // 20%濃いめの青
+                font: { bold: true, name: 'MS Gothic', sz: 9 },
+                alignment: { vertical: 'center', horizontal: 'center' },
+                border: borderThin
+            };
+            const nameStyle = {
+                font: { bold: true, name: 'MS Gothic', sz: 9 },
+                alignment: { vertical: 'center', horizontal: 'left' },
+                border: borderThin
+            };
+            const normalStyle = {
+                font: { name: 'MS Gothic', sz: 9 },
+                alignment: { vertical: 'center', horizontal: 'center' },
+                border: borderThin
+            };
+            const visitedStyle = {
+                fill: { fgColor: { rgb: 'D8D3FD' } }, // 指定色 #D8D3FD
+                font: { name: 'MS Gothic', sz: 9 },
+                alignment: { vertical: 'center', horizontal: 'center' },
+                border: borderThin
+            };
+            const totalStyle = {
+                fill: { fgColor: { rgb: 'F2F2F2' } },
+                font: { bold: true, name: 'MS Gothic', sz: 9 },
+                alignment: { vertical: 'center', horizontal: 'center' },
+                border: borderThin
+            };
+            // 総合計用の薄青枠（1ページ構成用）
+            const finalTotalStyleThin = {
+                fill: { fgColor: { rgb: '9BC2E6' } },
+                font: { bold: true, name: 'MS Gothic', sz: 9 },
+                alignment: { vertical: 'center', horizontal: 'center' },
+                border: borderThin
+            };
+
+            // 当月実績のある患者のみ抽出 (行っていない人を除外)
+            const activePatientsInMonth = appState.patients.filter(p => {
+                const hasVisit = p.visits.some(v => v.replace(/\//g, '-').startsWith(yearMonth.replace('/', '-')));
+                const isActiveAndCompleted = appState.activePatients.some(ap => ap.id === p.id && ap.status === 'completed');
+                return hasVisit || isActiveAndCompleted;
+            });
+
+            const N = activePatientsInMonth.length;
+            let maxRows = N;
+            if (N <= 50) {
+                maxRows = 50;
+            }
+
+            const totalColIdx = 2 + activeDates.length;
+            const totalColLabel = getExcelColumnLabel(totalColIdx);
+            
+            // 総合計行のExcel行番号を特定
+            let sumRowNum = 0;
+            if (N <= 54) {
+                sumRowNum = (N <= 50) ? 54 : (N + 4); // ヘッダーが3行分あるため、データ開始4行目 ➔ 総合計は 54行目 (4+50) または N+4行目
+            } else {
+                const dataEndRow = 3 + N; // 4行目からデータ開始のため
+                sumRowNum = dataEndRow + 3 + 1; // 3行あける
+            }
+
+            // 1. タイトルと請求金額数式の配置 (Excelの1行目)
+            ws['A1'] = { v: `${facilityName} ${yearMonth.replace('-', '年')}月`, t: 's', s: titleStyle };
+            
+            // 請求金額数式: 総合計セル(totalColLabel + sumRowNum) * 10
+            const amountFormula = `="請求金額合計： ￥ " & TEXT(${totalColLabel}${sumRowNum}*10, "#,##0")`;
+            const amountColLabel = getExcelColumnLabel(Math.max(2, totalColIdx - 2));
+            ws[`${amountColLabel}1`] = { f: amountFormula, t: 's', s: titleStyle };
+
+            // 2. 記入欄の配置 (Excelの2行目)
+            ws['A2'] = { v: '請・領渡し日： [                ]', t: 's', s: labelStyle };
+            const receiveColLabel = getExcelColumnLabel(Math.min(3, totalColIdx - 1));
+            ws[`${receiveColLabel}2`] = { v: '領収書受取日： [                ]', t: 's', s: labelStyle };
+
+            // 3. テーブルヘッダー (Excel of 3行目)
+            ws['A3'] = { v: 'カルテNo', t: 's', s: headerStyle };
+            ws['B3'] = { v: '名前', t: 's', s: headerStyle };
+            activeDates.forEach((d, idx) => {
+                const colLabel = getExcelColumnLabel(2 + idx);
+                ws[`${colLabel}3`] = { v: d.substring(5), t: 's', s: headerStyle };
+            });
+            ws[`${totalColLabel}3`] = { v: '合計', t: 's', s: headerStyle };
+
+            // 4. データ行の作成 (Excel of 4行目〜)
+            for (let r = 0; r < maxRows; r++) {
+                const rowNum = 4 + r; // 4行目から開始
+                const p = activePatientsInMonth[r];
+                const isExist = !!p;
+                const name = isExist ? p.name : '';
+                const karte = isExist ? p.karteNo : '';
+                
+                ws[`A${rowNum}`] = { v: karte, t: 's', s: normalStyle };
+                ws[`B${rowNum}`] = { v: name, t: 's', s: nameStyle };
+                
+                activeDates.forEach((d, idx) => {
+                    const colLabel = getExcelColumnLabel(2 + idx);
+                    const visited = isExist && p.visits.includes(d);
+                    ws[`${colLabel}${rowNum}`] = { v: '', t: 's', s: visited ? visitedStyle : normalStyle };
+                });
+                
+                const startColLabel = 'C';
+                const endColLabel = getExcelColumnLabel(totalColIdx - 1);
+                const formula = `=SUM(${startColLabel}${rowNum}:${endColLabel}${rowNum})`;
+                ws[`${totalColLabel}${rowNum}`] = { f: formula, t: 'n', s: totalStyle };
+            }
+
+            // 5. 総合計行の作成
+            if (N <= 54) {
+                ws[`A${sumRowNum}`] = { v: '', t: 's', s: finalTotalStyleThin };
+                ws[`B${sumRowNum}`] = { v: '総合計', t: 's', s: finalTotalStyleThin };
+                activeDates.forEach((d, idx) => {
+                    const colLabel = getExcelColumnLabel(2 + idx);
+                    ws[`${colLabel}${sumRowNum}`] = { v: '', t: 's', s: finalTotalStyleThin };
+                });
+                
+                const sumFormula = `=SUM(${totalColLabel}4:${totalColLabel}${sumRowNum - 1})`;
+                ws[`${totalColLabel}${sumRowNum}`] = { f: sumFormula, t: 'n', s: finalTotalStyleThin };
+            } else {
+                const dataEndRow = 3 + N;
+                
+                // 3行あけるスペース
+                for (let i = 1; i <= 3; i++) {
+                    const emptyRowNum = dataEndRow + i;
+                    ws[`A${emptyRowNum}`] = { v: '', t: 's', s: normalStyle };
+                    ws[`B${emptyRowNum}`] = { v: '', t: 's', s: normalStyle };
+                    activeDates.forEach((d, idx) => {
+                        const colLabel = getExcelColumnLabel(2 + idx);
+                        ws[`${colLabel}${emptyRowNum}`] = { v: '', t: 's', s: normalStyle };
+                    });
+                    ws[`${totalColLabel}${emptyRowNum}`] = { v: '', t: 's', s: totalStyle };
+                }
+
+                const borderDouble = {
+                    top: { style: 'thin', color: { rgb: '000000' } },
+                    bottom: { style: 'double', color: { rgb: '000000' } },
+                    left: { style: 'thin', color: { rgb: '000000' } },
+                    right: { style: 'thin', color: { rgb: '000000' } }
+                };
+                const finalTotalStyle = {
+                    fill: { fgColor: { rgb: '9BC2E6' } },
+                    font: { bold: true, name: 'MS Gothic', sz: 9 },
+                    alignment: { vertical: 'center', horizontal: 'center' },
+                    border: borderDouble
+                };
+
+                ws[`A${sumRowNum}`] = { v: '', t: 's', s: finalTotalStyle };
+                ws[`B${sumRowNum}`] = { v: '総合計', t: 's', s: finalTotalStyle };
+                activeDates.forEach((d, idx) => {
+                    const colLabel = getExcelColumnLabel(2 + idx);
+                    ws[`${colLabel}${sumRowNum}`] = { v: '', t: 's', s: finalTotalStyle };
+                });
+
+                const sumFormula = `=SUM(${totalColLabel}4:${totalColLabel}${dataEndRow})`;
+                ws[`${totalColLabel}${sumRowNum}`] = { f: sumFormula, t: 'n', s: finalTotalStyle };
+            }
+
+            ws['!ref'] = `A1:${totalColLabel}${sumRowNum}`;
+            
+            // 行の高さ設定 (印刷時に綺麗にレイアウトが収まるよう動的調整)
+            const rowHeights = [];
+            rowHeights[0] = { hpt: (N >= 51 && N <= 54) ? 26 : 30 }; // 1行目（タイトル・金額）
+            rowHeights[1] = { hpt: (N >= 51 && N <= 54) ? 20 : 24 }; // 2行目（日付記入欄）
+            rowHeights[2] = { hpt: (N >= 51 && N <= 54) ? 19 : 22 }; // 3行目（テーブルヘッダー）
+            
+            const dataRowHeight = (N >= 51 && N <= 54) ? 16 : 19;
+            for (let r = 0; r < maxRows; r++) {
+                rowHeights[3 + r] = { hpt: dataRowHeight };
+            }
+            
+            if (N <= 54) {
+                rowHeights[sumRowNum - 1] = { hpt: (N >= 51 && N <= 54) ? 19 : 22 }; // 総合計行
+            } else {
+                const dataEndRow = 3 + N;
+                for (let i = 1; i <= 3; i++) {
+                    rowHeights[dataEndRow + i - 1] = { hpt: 19 }; // 空行
+                }
+                rowHeights[sumRowNum - 1] = { hpt: 22 }; // 総合計行
+            }
+            ws['!rows'] = rowHeights;
+            
+            const cols = [{ wch: 9 }, { wch: 15 }];
+            activeDates.forEach(() => {
+                cols.push({ wch: 6 });
+            });
+            cols.push({ wch: 8 });
+            ws['!cols'] = cols;
+
+            // 余白設定 (左/右 0.4インチ, 上/下 0.4インチ)
+            ws['!margins'] = { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
+
+            // B5縦・FitToPage印刷設定
+            ws['!pageSetup'] = {
+                paperSize: 13,
+                orientation: 'portrait',
+                fitToPage: true,
+                fitToWidth: 1,
+                fitToHeight: (N <= 54) ? 1 : 0
+            };
+            
+            if (N >= 55) {
+                // 50名目の直後＝Excelの53行目の後ろ(0始まりのインデックス53)で改ページ
+                ws['!rowBreaks'] = [
+                    { r: 53, max: totalColIdx, min: 0 }
+                ];
+            }
+
+            ws['!views'] = [{ workbookViewId: 0, showGridLines: true }];
+
+            XLSX.utils.book_append_sheet(newWb, ws, sheetName);
+            const filename = `${facilityName}_${yearMonth.replace('-', '年')}月.xlsx`;
+            XLSX.writeFile(newWb, filename);
+            alert(`「${filename}」を新規データとしてダウンロードしました！`);
+        }
+
     </script>
 
     <!-- 使い方ヘルプモーダル -->
@@ -3682,6 +4421,27 @@
                         <strong>🧠 賢い時間計算ロジック</strong><br>
                         ・<strong>2人並行診察</strong>：上から2人ずつペアになり、同じ時間枠に割り当てられます。<br>
                         ・<strong>移動時間・引き継ぎ時間</strong>：次のペアに移る際、および同じ患者さんで医師から衛生士へ切り替わる際に、自動的に「1分」の移動時間を挟むため、時間が被りません。
+                    </div>
+                </div>
+
+                <h4 style="color: var(--primary); font-size: 1.05rem; margin-top: 1.75rem; margin-bottom: 0.5rem; border-left: 4px solid var(--primary); padding-left: 0.5rem;">
+                    📊 ⑤ 受付集計表タブ の使い方とエクセル印刷のコツ
+                </h4>
+                
+                <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 1rem; border-radius: 0.5rem; font-size: 0.88rem; color: var(--text-dark); display: flex; flex-direction: column; gap: 0.65rem; margin-bottom: 1.25rem;">
+                    <div>
+                        <strong>🔍 往診していない患者の自動除外：</strong><br>
+                        集計対象月（カレンダーで選んだ月）に、その施設で1回も往診実績がない（診察履歴がなく、本日の往診も行っていない）患者さんは、集計表プレビューおよびエクセル出力から自動で完全に除外されます。実際に往診実績のある患者さんのみで綺麗に一覧が構成されます。
+                    </div>
+                    <div>
+                        <strong>💵 医療点数入力と請求金額の自動連動：</strong><br>
+                        出力されたエクセルファイル上で、往診実績があった日（薄紫色 <span style="background-color: #d8d3fd; padding: 0.1rem 0.3rem; border-radius: 0.2rem; font-weight: bold; border: 1px solid #b4aeff; color: black;">#D8D3FD</span> のセル）に手動で点数を入力すると、右端の「合計」、最下部の「総合計」、および1行目の「請求金額合計（1点＝10円換算のカンマ区切り円表記）」がすべて自動でリアルタイム連動計算されます。
+                    </div>
+                    <div>
+                        <strong>🖨️ エクセルでのB5縦・綺麗に収める印刷のコツ：</strong><br>
+                        ・作成されたエクセルには、B5縦サイズで横幅が1ページに綺麗に収まるよう印刷設定があらかじめプリセットされています。<br>
+                        ・お使いのExcelの種類やバージョンによっては、印刷画面を開いた際に「すべての列を1ページに印刷」が自動で選択されないことがあります。<br>
+                        ・その場合は、印刷プレビュー画面の拡大縮小設定から、手動で<strong>「すべての列を1ページに印刷」</strong>を選択し直してください。これにより、はみ出すことなく1ページ幅内にスッキリ収めて印刷することができます。
                     </div>
                 </div>
 
