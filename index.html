@@ -1017,26 +1017,26 @@
                 background-color: transparent !important;
             }
 
-            .patient-table td:nth-child(1) {
+            .patient-table td.checkbox-cell {
                 grid-area: check;
                 display: flex;
                 justify-content: center;
                 align-items: center;
             }
 
-            .patient-table td:nth-child(2) {
+            .patient-table td.room-cell-clickable {
                 grid-area: room;
                 font-weight: 800;
                 color: var(--text-muted);
                 font-size: 0.85rem;
             }
 
-            .patient-table td:nth-child(4) {
+            .patient-table td.name-td {
                 grid-area: name;
                 font-size: 1rem;
             }
 
-            .patient-table td:nth-child(6) {
+            .patient-table td.status-td {
                 grid-area: status;
                 text-align: right;
             }
@@ -1047,7 +1047,7 @@
             }
 
             /* テーブルの特定列をスマホで非表示 */
-            .col-karte, .col-denture, .col-pre {
+            .col-karte, .col-infection, .col-denture, .col-pre {
                 display: none !important;
             }
 
@@ -1570,6 +1570,7 @@
                                         <th class="checkbox-cell">選択</th>
                                         <th>部屋</th>
                                         <th class="col-karte">カルテNo</th>
+                                        <th class="col-infection">感染</th>
                                         <th>名前</th>
                                         <th class="col-denture">口腔状況</th>
                                         <th>当月実績</th>
@@ -1636,15 +1637,16 @@
                         <table class="report-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 5%;">NO.</th>
-                                    <th style="width: 7%;">部屋</th>
-                                    <th style="width: 8%;">カルテNo</th>
-                                    <th style="width: 15%;">名前</th>
-                                    <th style="width: 13%;">医師診察時間</th>
-                                    <th style="width: 13%;">衛生士診察時間</th>
-                                    <th style="width: 9%;">口腔状況</th>
-                                    <th style="width: 17%;">注意事項</th>
-                                    <th style="width: 13%;">備考（メモ欄）</th>
+                                    <th style="width: 4%;">NO.</th>
+                                    <th style="width: 6%;">部屋</th>
+                                    <th style="width: 7%;">カルテNo</th>
+                                    <th style="width: 8%;">感染</th>
+                                    <th style="width: 13%;">名前</th>
+                                    <th style="width: 12%;">医師診察時間</th>
+                                    <th style="width: 12%;">衛生士診察時間</th>
+                                    <th style="width: 8%;">口腔状況</th>
+                                    <th style="width: 16%;">注意事項</th>
+                                    <th style="width: 14%;">備考（メモ欄）</th>
                                 </tr>
                             </thead>
                             <tbody id="print-list-tbody">
@@ -2288,6 +2290,18 @@
             return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
         }
 
+        // 感染バッジ生成用ヘルパー
+        function getInfectionBadgeHtml(infection) {
+            if (!infection || infection === '-') return '<span style="color: #94a3b8;">-</span>';
+            const text = String(infection).trim();
+            // B肝、C肝、HBV、HCV、HIV、梅毒、肝炎 などの危険なワードにマッチ
+            const isDangerous = /(B肝|C肝|HBV|HCV|HIV|梅毒|肝炎)/i.test(text);
+            if (isDangerous) {
+                return `<span class="badge" style="background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-weight: 800; padding: 0.15rem 0.4rem; font-size: 0.75rem; display: inline-block; white-space: nowrap;">⚠️ ${text}</span>`;
+            }
+            return `<span class="badge" style="background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 0.15rem 0.4rem; font-size: 0.75rem; display: inline-block; white-space: nowrap;">${text}</span>`;
+        }
+
         // シートデータを読み込んで患者マスターを生成
         function loadSheetData(sheetName) {
             const worksheet = appState.workbook.Sheets[sheetName];
@@ -2299,6 +2313,7 @@
 
             let colRoom = -1;
             let colKarte = -1;
+            let colInfection = -1; // 感染列
             let colName = -1;
             let colDenture = -1;
             let colVisits = [];
@@ -2314,6 +2329,7 @@
                     const val = String(cell.v).trim();
                     if (['部屋番号', '部屋', 'Room'].includes(val)) colRoom = c;
                     if (['カルテNo', 'カルテナンバー', 'カルテ', 'Karte'].includes(val)) colKarte = c;
+                    if (['感染', '感染症', 'Infection'].includes(val)) colInfection = c;
                     if (['名前', '氏名', '患者名', 'Name'].includes(val)) colName = c;
                     if (['義歯', '義歯の有無', 'Denture'].includes(val)) colDenture = c;
                     if (['1回目診察日', '1回目', '診察日1', '2回目診察日', '2回目', '診察日2', '3回目診察日', '3回目', '診察日3', '4回目診察日', '4回目', '診察日4'].includes(val)) {
@@ -2328,6 +2344,10 @@
             // 栄養列が見つからず、L列（インデックス11）が存在すれば割り当てる
             if (colNutrition === -1 && range.e.c >= 11) {
                 colNutrition = 11;
+            }
+            // 感染列が見つからず、K列（インデックス10）が存在すれば割り当てる
+            if (colInfection === -1 && range.e.c >= 10) {
+                colInfection = 10;
             }
 
             // 診察日列をヘッダー名や位置などで適切に並び替え
@@ -2385,6 +2405,7 @@
                     precautions: getCellVal(colPrecautions),
                     memo: memoVal,
                     nutrition: nutritionVal,
+                    infection: getCellVal(colInfection),
                     isExcluded: memoVal.includes('除外'),
                     isNonOral: nutritionVal.includes('非経口')
                 };
@@ -2665,8 +2686,15 @@
 
                 tr.appendChild(createTd(p.karteNo, 'col-karte'));
                 
+                // 感染セルを追加
+                const tdInfection = document.createElement('td');
+                tdInfection.className = 'col-infection';
+                tdInfection.innerHTML = getInfectionBadgeHtml(p.infection);
+                tr.appendChild(tdInfection);
+                
                 // 名前セル（モバイル時は名前の下に義歯や注意事項をバッジとして表示）
                 const tdName = document.createElement('td');
+                tdName.className = 'name-td';
                 let nameHtml = `<div style="font-weight: 700; color: var(--text-dark);">${p.name || '-'}</div>`;
                 let mobileSubHtml = '';
                 if (p.isExcluded) {
@@ -2687,6 +2715,7 @@
                 tr.appendChild(createTd(p.denture, 'col-denture'));
 
                 const tdStatus = document.createElement('td');
+                tdStatus.className = 'status-td';
                 tdStatus.innerHTML = historyBadgeHtml;
                 tr.appendChild(tdStatus);
 
@@ -3344,7 +3373,7 @@
             listTbody.innerHTML = '';
 
             if (activeCount === 0) {
-                listTbody.innerHTML = '<tr><td colspan="9" class="text-center" style="padding: 2rem;">往診予定者が選択されていません。</td></tr>';
+                listTbody.innerHTML = '<tr><td colspan="10" class="text-center" style="padding: 2rem;">往診予定者が選択されていません。</td></tr>';
             } else {
                 appState.activePatients.forEach((p, idx) => {
                     const tr = document.createElement('tr');
@@ -3371,6 +3400,13 @@
                     tr.appendChild(createCell(idx + 1, true)); // NO.
                     tr.appendChild(createCell(p.room, true));
                     tr.appendChild(createCell(p.karteNo, true));
+                    
+                    // 感染
+                    const tdInfection = document.createElement('td');
+                    tdInfection.innerHTML = getInfectionBadgeHtml(p.infection);
+                    tdInfection.style.textAlign = 'center';
+                    tr.appendChild(tdInfection);
+
                     tr.appendChild(createCell(p.name, false, true));
                     tr.appendChild(createCell(isCancelled ? '不実施' : p.docTimeStr, true, p.currentVisitCount === 1 && !isCancelled));
                     tr.appendChild(createCell(isCancelled ? '不実施' : p.hygTimeStr, true, !isCancelled));
@@ -3530,6 +3566,7 @@
                 let colVisitIdxs = [];
                 let colMemoIdx = -1;
                 let colNutritionIdx = -1; // 栄養列
+                let colInfectionIdx = -1; // 感染列
 
                 // 1行目(ヘッダー)を走査
                 for (let c = range.s.c; c <= range.e.c; ++c) {
@@ -3543,12 +3580,17 @@
                         }
                         if (['備考', 'メモ', 'Memo'].includes(val)) colMemoIdx = c;
                         if (['栄養', 'Nutrition'].includes(val)) colNutritionIdx = c;
+                        if (['感染', '感染症', 'Infection'].includes(val)) colInfectionIdx = c;
                     }
                 }
 
                 // 栄養列が見つからず、L列（インデックス11）が存在すれば割り当てる
                 if (colNutritionIdx === -1 && range.e.c >= 11) {
                     colNutritionIdx = 11;
+                }
+                // 感染列が見つからず、K列（インデックス10）が存在すれば割り当てる
+                if (colInfectionIdx === -1 && range.e.c >= 10) {
+                    colInfectionIdx = 10;
                 }
 
                 if (colKarteIdx === -1 || colVisitIdxs.length === 0) {
@@ -3573,6 +3615,10 @@
                         if (colNutritionIdx !== -1) {
                             const nutritionCellAddr = XLSX.utils.encode_cell({r: r, c: colNutritionIdx});
                             writeCell(ws, nutritionCellAddr, targetP.nutrition || '');
+                        }
+                        if (colInfectionIdx !== -1) {
+                            const infectionCellAddr = XLSX.utils.encode_cell({r: r, c: colInfectionIdx});
+                            writeCell(ws, infectionCellAddr, targetP.infection || '');
                         }
                     }
                     
