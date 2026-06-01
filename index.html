@@ -12,6 +12,10 @@
     <script src="https://cdn.jsdelivr.net/npm/lucide@0.344.0/dist/umd/lucide.min.js"></script>
     <!-- html2pdf.js (PDF出力用) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Flatpickr (カレンダー履歴ハイライト用) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
     <style>
         /* コントラストを強化したプレミアムな医療用カラーパレット */
         :root {
@@ -35,6 +39,32 @@
             --danger: #ef4444;
             --shadow: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.08);
             --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
+        }
+
+        /* カレンダー履歴ハイライト用 */
+        .has-history-date {
+            background-color: #dbeafe !important; /* 薄い青 */
+            color: #1e40af !important; /* 濃い青文字 */
+            font-weight: bold;
+            border-radius: 4px;
+        }
+        .flatpickr-day.selected.has-history-date {
+            background-color: var(--primary) !important;
+            color: white !important;
+        }
+        /* 当日のカレンダー表示を見やすく改善 */
+        .flatpickr-day.today {
+            border-color: #2563eb !important;
+            background-color: rgba(37, 99, 235, 0.08) !important;
+            font-weight: bold;
+            border-radius: 4px;
+        }
+        .flatpickr-day.today:hover {
+            background-color: rgba(37, 99, 235, 0.15) !important;
+        }
+        .flatpickr-day.today.selected {
+            background-color: var(--primary) !important;
+            color: white !important;
         }
 
         * {
@@ -1414,7 +1444,12 @@
 
             <div class="sidebar-section">
                 <label for="visit-date">往診日</label>
-                <input type="date" id="visit-date" class="date-input">
+                <input type="text" id="visit-date" class="date-input" readonly style="cursor: pointer;">
+            </div>
+
+            <div class="sidebar-section">
+                <label for="start-time">開始時間</label>
+                <input type="time" id="start-time" class="time-input" value="09:00">
             </div>
 
             <!-- 選択中の施設情報（常に表示・編集可） -->
@@ -1811,6 +1846,14 @@
         </main>
     </div>
 
+    <!-- デバッグ用エラーハンドラー -->
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            alert("JSエラー発生:\nメッセージ: " + message + "\nファイル: " + source + "\n行番号: " + lineno + "\n列番号: " + colno + "\nスタック: " + (error ? error.stack : 'N/A'));
+            return false;
+        };
+    </script>
+
     <!-- アプリケーションロジック -->
     <script>
         // デフォルトのクリニック情報を定義
@@ -1833,11 +1876,13 @@
             activePatients: [], // 本日往診する患者リスト（順序維持）
             startTime: '09:00',
             clinicInfo: {...defaultClinicInfo},
-            facilityDetails: {}
+            facilityDetails: {},
+            historyDates: new Set() // カレンダー履歴ハイライト用
         };
 
         // Shiftキーでの範囲選択用
         let lastCheckedIndex = -1;
+        let fpInstance = null; // Flatpickr インスタンス用
 
         // 初期ロード処理
         window.addEventListener('DOMContentLoaded', () => {
@@ -1849,31 +1894,47 @@
             setupMobileEvents();
             setupHelpEvents();
             
-            // 最後に選択した日付（無ければ今日の日付）を初期値として設定
+            // 初回起動時（ブラウザで開いた直後）は常に今日の日付を初期値にする
             const today = new Date().toISOString().split('T')[0];
-            let savedDate = localStorage.getItem('hcs_selected_date') || today;
+            const savedDate = today;
             
-            // 文字列としての "undefined" や "null" を排除
-            if (savedDate === 'undefined' || savedDate === 'null') {
-                savedDate = today;
-            }
-            // スラッシュ区切りをハイフン区切りに変換 (HTML5 input type="date" の要件)
-            if (savedDate && savedDate.includes('/')) {
-                savedDate = savedDate.replace(/\//g, '-');
-            }
-            // YYYY-MM-DD 形式になっていない場合は今日の日付にフォールバック
-            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-            if (!dateRegex.test(savedDate)) {
-                savedDate = today;
-            }
-            
-            document.getElementById('visit-date').value = savedDate;
-            // 万が一ブラウザに拒否されて空欄になった場合のフォールバックガード
-            if (!document.getElementById('visit-date').value) {
-                document.getElementById('visit-date').value = today;
-                appState.selectedDate = today;
+            appState.selectedDate = savedDate;
+
+            // Flatpickr の初期化（無効時は標準ピッカーへ自動フォールバック）
+            const dateInput = document.getElementById('visit-date');
+            if (typeof flatpickr !== 'undefined') {
+                try {
+                    const fpConfig = {
+                        dateFormat: "Y-m-d",
+                        defaultDate: savedDate,
+                        disableMobile: "true", // モバイルでもブラウザ標準ではなくFlatpickrを表示
+                        onChange: function(selectedDates, dateStr) {
+                            appState.selectedDate = dateStr;
+                            localStorage.setItem('hcs_selected_date', dateStr);
+                            autoSelectPatientsByDate();
+                        },
+                        onDayCreate: function(dObj, dStr, fp, dayElem) {
+                            const y = dayElem.dateObj.getFullYear();
+                            const m = String(dayElem.dateObj.getMonth() + 1).padStart(2, '0');
+                            const d = String(dayElem.dateObj.getDate()).padStart(2, '0');
+                            const dFormatted = `${y}-${m}-${d}`;
+                            if (appState.historyDates && appState.historyDates.has(dFormatted)) {
+                                dayElem.classList.add("has-history-date");
+                            }
+                        }
+                    };
+                    // 日本語ロケールが存在する場合のみ適用
+                    if (window.flatpickr && flatpickr.l10ns && flatpickr.l10ns.ja) {
+                        fpConfig.locale = "ja";
+                    }
+                    fpInstance = flatpickr("#visit-date", fpConfig);
+                } catch (e) {
+                    console.error("Flatpickr init failed, fallback to native date picker:", e);
+                    fallbackToNativeDatePicker(dateInput, savedDate);
+                }
             } else {
-                appState.selectedDate = savedDate;
+                console.warn("Flatpickr not loaded, fallback to native date picker.");
+                fallbackToNativeDatePicker(dateInput, savedDate);
             }
 
             // 訪問開始時間の初期値読み込み (LocalStorage)
@@ -2044,6 +2105,68 @@
             });
         }
 
+        // Excel内の全シートから最新の診察日をスキャンする
+        function findLatestVisitDateInExcel(workbook) {
+            let latestDate = null;
+            const dateHeaders = ['1回目診察日', '1回目', '診察日1', '2回目診察日', '2回目', '診察日2', '3回目診察日', '3回目', '診察日3', '4回目診察日', '4回目', '診察日4'];
+            const facilitySheets = workbook.SheetNames.filter(name => name !== '設定' && name !== '施設詳細' && !name.endsWith('_受付集計'));
+            
+            facilitySheets.forEach(sheetName => {
+                const ws = workbook.Sheets[sheetName];
+                if (!ws || !ws['!ref']) return;
+                const range = XLSX.utils.decode_range(ws['!ref']);
+                
+                let colVisitIdxs = [];
+                for (let c = range.s.c; c <= range.e.c; ++c) {
+                    const addr = XLSX.utils.encode_cell({r: range.s.r, c: c});
+                    const cell = ws[addr];
+                    if (cell) {
+                        const val = String(cell.v).trim();
+                        if (dateHeaders.includes(val)) {
+                            colVisitIdxs.push(c);
+                        }
+                    }
+                }
+                
+                if (colVisitIdxs.length === 0) return;
+                
+                for (let r = range.s.r + 1; r <= range.e.r; ++r) {
+                    colVisitIdxs.forEach(colIdx => {
+                        const cellAddr = XLSX.utils.encode_cell({r: r, c: colIdx});
+                        const cell = ws[cellAddr];
+                        if (cell && cell.v !== undefined && cell.v !== null) {
+                            let dateVal = cell.v;
+                            let parsedDate = null;
+                            if (dateVal instanceof Date) {
+                                parsedDate = dateVal;
+                            } else {
+                                const strVal = String(dateVal).trim();
+                                if (strVal) {
+                                    const d = new Date(strVal);
+                                    if (!isNaN(d.getTime())) {
+                                        parsedDate = d;
+                                    }
+                                }
+                            }
+                            if (parsedDate) {
+                                if (!latestDate || parsedDate > latestDate) {
+                                    latestDate = parsedDate;
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+            
+            if (latestDate) {
+                const y = latestDate.getFullYear();
+                const m = String(latestDate.getMonth() + 1).padStart(2, '0');
+                const d = String(latestDate.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            }
+            return null;
+        }
+
         // Excelファイル処理
         function processFile(file) {
             const reader = new FileReader();
@@ -2070,6 +2193,14 @@
                         return;
                     }
 
+                    const today = new Date().toISOString().split('T')[0];
+                    const targetDate = today;
+                    appState.selectedDate = targetDate;
+                    if (fpInstance) {
+                        fpInstance.setDate(targetDate, false);
+                    }
+                    updateHistoryDates();
+
                     // アプリ画面の表示切り替え
                     document.getElementById('welcome-screen').style.display = 'none';
                     document.getElementById('app-layout').style.display = 'flex';
@@ -2077,14 +2208,7 @@
                     // 非表示から表示へ切り替わったため、日付と開始時間を再セット（ブラウザの表示バグ防止）
                     const dateInput = document.getElementById('visit-date');
                     if (dateInput) {
-                        if (appState.selectedDate) {
-                            dateInput.value = appState.selectedDate;
-                        }
-                        if (!dateInput.value) {
-                            const today = new Date().toISOString().split('T')[0];
-                            dateInput.value = today;
-                            appState.selectedDate = today;
-                        }
+                        dateInput.value = appState.selectedDate;
                     }
                     const startInput = document.getElementById('start-time');
                     if (startInput && appState.startTime) {
@@ -2162,7 +2286,7 @@
                 appState.facilityDetails['鴻巣フラワーパレス'].addr = '埼玉県鴻巣市神明２－９－２３';
                 appState.facilityDetails['鴻巣フラワーパレス'].tel = '048-596-5254';
                 appState.facilityDetails['鴻巣フラワーパレス'].fax = '048-596-5254';
-                appState.facilityDetails['鴻巣フラワーパレス'].memo = '１Fおふろ月・木\n２Fおふろ火・金';
+                appState.facilityDetails['鴻巣フラワーパレス'].memo = `１Fおふろ月・木\n２Fおふろ火・金`;
             }
             if (appState.facilityDetails['川里苑']) {
                 appState.facilityDetails['川里苑'].addr = '埼玉県鴻巣市関新田１１５';
@@ -2224,20 +2348,7 @@
                 loadSheetData(appState.currentSheet);
             });
 
-            document.getElementById('visit-date').addEventListener('change', (e) => {
-                const val = e.target.value;
-                const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-                if (val && dateRegex.test(val)) {
-                    appState.selectedDate = val;
-                    localStorage.setItem('hcs_selected_date', val); // 最後に選択した日付を記憶
-                } else {
-                    const today = new Date().toISOString().split('T')[0];
-                    appState.selectedDate = today;
-                    localStorage.setItem('hcs_selected_date', today);
-                    document.getElementById('visit-date').value = today;
-                }
-                autoSelectPatientsByDate();
-            });
+
 
             document.getElementById('start-time').addEventListener('change', (e) => {
                 appState.startTime = e.target.value;
@@ -2285,21 +2396,95 @@
             return String(val);
         }
 
+        // 実績や下書きがある日付を検索してセットに格納し、カレンダーを更新
+        function updateHistoryDates() {
+            const dates = new Set();
+            
+            // 1. Excel履歴から抽出 (YYYY/MM/DD ➔ YYYY-MM-DD)
+            if (appState.patients) {
+                appState.patients.forEach(p => {
+                    if (p.visits) {
+                        p.visits.forEach(v => {
+                            const formatted = v.replace(/\//g, '-');
+                            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                            if (dateRegex.test(formatted)) {
+                                dates.add(formatted);
+                            }
+                        });
+                    }
+                });
+            }
+            
+            // 2. LocalStorage の下書きキーから抽出 (hcs_draft_施設名_YYYY-MM-DD)
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('hcs_draft_')) {
+                    // 空配列 '[]' または空データの場合は除外する
+                    const val = localStorage.getItem(key);
+                    if (val && val !== '[]' && val !== '""') {
+                        const parts = key.split('_');
+                        if (parts.length >= 4) {
+                            const dateStr = parts[parts.length - 1]; // 最後の部分が日付
+                            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                            if (dateRegex.test(dateStr)) {
+                                dates.add(dateStr);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            appState.historyDates = dates;
+            
+            // Flatpickr の再描画
+            if (fpInstance) {
+                fpInstance.redraw();
+            }
+        }
+
+        // Flatpickr が何らかの理由で使えない場合のブラウザ標準ピッカーへのフォールバック処理
+        function fallbackToNativeDatePicker(inputEl, defaultValue) {
+            if (!inputEl) return;
+            inputEl.type = 'date';
+            inputEl.removeAttribute('readonly');
+            inputEl.style.cursor = 'default';
+            inputEl.style.backgroundColor = '';
+            inputEl.value = defaultValue;
+            appState.selectedDate = defaultValue;
+            
+            // change イベントリスナーを再設定
+            inputEl.addEventListener('change', (e) => {
+                const val = e.target.value;
+                const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+                if (val && dateRegex.test(val)) {
+                    appState.selectedDate = val;
+                    localStorage.setItem('hcs_selected_date', val);
+                } else {
+                    const today = new Date().toISOString().split('T')[0];
+                    appState.selectedDate = today;
+                    localStorage.setItem('hcs_selected_date', today);
+                    inputEl.value = today;
+                }
+                autoSelectPatientsByDate();
+            });
+        }
+
         // 自然順ソート用比較関数（部屋番号などで数値と文字列の混在を自然順にソートする）
         function naturalCompare(a, b) {
             return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
         }
 
-        // 感染バッジ生成用ヘルパー
+        // 感染表示用ヘルパー（シンプル赤字）
         function getInfectionBadgeHtml(infection) {
             if (!infection || infection === '-') return '<span style="color: #94a3b8;">-</span>';
             const text = String(infection).trim();
+            const escapedText = escapeHtml(text);
             // B肝、C肝、HBV、HCV、HIV、梅毒、肝炎 などの危険なワードにマッチ
             const isDangerous = /(B肝|C肝|HBV|HCV|HIV|梅毒|肝炎)/i.test(text);
             if (isDangerous) {
-                return `<span class="badge" style="background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; font-weight: 800; padding: 0.15rem 0.4rem; font-size: 0.75rem; display: inline-block; white-space: nowrap;">⚠️ ${text}</span>`;
+                return `<span style="color: #dc2626; font-weight: bold;">${escapedText}</span>`;
             }
-            return `<span class="badge" style="background-color: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 0.15rem 0.4rem; font-size: 0.75rem; display: inline-block; white-space: nowrap;">${text}</span>`;
+            return `<span>${escapedText}</span>`;
         }
 
         // シートデータを読み込んで患者マスターを生成
@@ -2431,27 +2616,63 @@
         // ローカル下書き（選択状態と本日メモ）を保存
         function saveDraft() {
             if (!appState.currentSheet || !appState.selectedDate) return;
-            const draftData = appState.activePatients.map(ap => ({
-                id: ap.id,
-                status: ap.status,
-                currentVisitCount: ap.currentVisitCount,
-                todayMemo: ap.todayMemo,
-                isNonOral: ap.isNonOral,
-                nutrition: ap.nutrition
-            }));
             const key = `hcs_draft_${appState.currentSheet}_${appState.selectedDate}`;
-            localStorage.setItem(key, JSON.stringify(draftData));
+            
+            if (appState.activePatients.length === 0) {
+                // 選択されている患者がゼロの場合は、下書きキー自体を削除する（カレンダーのハイライトをリアルタイムで消すため）
+                localStorage.removeItem(key);
+            } else {
+                const draftData = appState.activePatients.map(ap => ({
+                    id: ap.id,
+                    status: ap.status,
+                    currentVisitCount: ap.currentVisitCount,
+                    todayMemo: ap.todayMemo,
+                    isNonOral: ap.isNonOral,
+                    nutrition: ap.nutrition
+                }));
+                localStorage.setItem(key, JSON.stringify(draftData));
+            }
+            updateHistoryDates();
         }
 
         // ローカル下書きを読み込んで復元
         function loadDraft() {
             if (!appState.currentSheet || !appState.selectedDate) return;
+            
+            const targetDateSlash = formatDateString(new Date(appState.selectedDate));
+            const excelHasRecords = appState.patients.some(p => p.visits.includes(targetDateSlash));
             const key = `hcs_draft_${appState.currentSheet}_${appState.selectedDate}`;
             const saved = localStorage.getItem(key);
             
             appState.activePatients = [];
 
-            if (saved) {
+            if (excelHasRecords) {
+                // Excelにデータがある場合は、Excelから読み込む (優先度1: Excel > Browser)
+                let loadedCountFromExcel = 0;
+                
+                appState.patients.forEach(p => {
+                    if (p.visits.includes(targetDateSlash)) {
+                        const pCopy = { ...p };
+                        pCopy.status = 'completed'; // 実績データに記録されているため「実施(完了)」とする
+                        
+                        // この日付がその月の何回目の往診実績にあたるかを判定
+                        const targetMonth = targetDateSlash.substring(0, 7);
+                        const monthVisits = p.visits.filter(v => v.startsWith(targetMonth)).sort();
+                        const visitIndex = monthVisits.indexOf(targetDateSlash);
+                        pCopy.currentVisitCount = visitIndex !== -1 ? (visitIndex + 1) : 1;
+                        pCopy.todayMemo = '';
+                        
+                        appState.activePatients.push(pCopy);
+                        loadedCountFromExcel++;
+                    }
+                });
+                
+                // もし30名を超えていたら、ダイアログ表示 (ただし activePatients には全員入れる)
+                if (loadedCountFromExcel > 30) {
+                    alert(`【往診設定】Excelから手動で追加されたデータを含め、本日分として合計 ${loadedCountFromExcel} 名の往診データを読み込みました。\n\n※印刷プレビューは2枚にわたって自動構成されます。\n※アプリ画面上での新規選択は最大30名までに制限されます。`);
+                }
+            } else if (saved) {
+                // Excelにデータが無い場合は、下書き（localStorageのキャッシュ）から復元 (優先度2: Browser)
                 try {
                     const draftData = JSON.parse(saved);
                     draftData.forEach(draftItem => {
@@ -2695,7 +2916,7 @@
                 // 名前セル（モバイル時は名前の下に義歯や注意事項をバッジとして表示）
                 const tdName = document.createElement('td');
                 tdName.className = 'name-td';
-                let nameHtml = `<div style="font-weight: 700; color: var(--text-dark);">${p.name || '-'}</div>`;
+                let nameHtml = `<div style="font-weight: 700; color: var(--text-dark);">${escapeHtml(p.name || '-')}</div>`;
                 let mobileSubHtml = '';
                 if (p.isExcluded) {
                     mobileSubHtml += `<span class="mobile-only-inline badge" style="font-size: 0.7rem; margin-right: 0.25rem; padding: 0.1rem 0.35rem; background-color: #e2e8f0; color: #475569; border: 1px solid #cbd5e1;">除外中</span>`;
@@ -2704,7 +2925,7 @@
                     mobileSubHtml += `<span class="mobile-only-inline badge badge-secondary" style="font-size: 0.7rem; margin-right: 0.25rem; padding: 0.1rem 0.35rem;">義歯</span>`;
                 }
                 if (p.precautions && p.precautions !== '-') {
-                    mobileSubHtml += `<span class="mobile-only-inline badge badge-danger" style="font-size: 0.7rem; padding: 0.1rem 0.35rem; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${p.precautions}">⚠️ ${p.precautions}</span>`;
+                    mobileSubHtml += `<span class="mobile-only-inline badge badge-danger" style="font-size: 0.7rem; padding: 0.1rem 0.35rem; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(p.precautions)}">⚠️ ${escapeHtml(p.precautions)}</span>`;
                 }
                 if (mobileSubHtml) {
                     nameHtml += `<div class="mobile-only-block" style="margin-top: 0.25rem; line-height: 1.2;">${mobileSubHtml}</div>`;
@@ -2822,20 +3043,20 @@
             const d2 = sortedVisits[sortedVisits.length - 1];
 
             textEl.innerHTML = `
-                <strong>${patient.name}</strong> さんは、今回の設定日（<strong>${targetShow}</strong>）の前後にすでに診察実績（${d1.substring(5)}, ${d2.substring(5)}）が登録されています。<br>
+                <strong>${escapeHtml(patient.name)}</strong> さんは、今回の設定日（<strong>${escapeHtml(targetShow)}</strong>）の前後にすでに診察実績（${escapeHtml(d1.substring(5))}, ${escapeHtml(d2.substring(5))}）が登録されています。<br>
                 どのような修正を行いますか？
             `;
 
             optionsEl.innerHTML = `
-                <button class="btn" style="text-align: left; font-size: 0.85rem; padding: 0.65rem 0.85rem; justify-content: flex-start; gap: 0.5rem; background-color: var(--primary); color: white;" onclick="resolveRepair('${patient.id}', 'replace', '${d1}', '${targetDateStr}', '${targetMonth}')">
+                <button class="btn" style="text-align: left; font-size: 0.85rem; padding: 0.65rem 0.85rem; justify-content: flex-start; gap: 0.5rem; background-color: var(--primary); color: white;" onclick="resolveRepair('${escapeHtml(patient.id)}', 'replace', '${escapeHtml(d1)}', '${escapeHtml(targetDateStr)}', '${escapeHtml(targetMonth)}')">
                     <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
-                    1回目の修正（${d1.substring(5)} ➔ <strong>${targetShow}</strong>）
+                    1回目の修正（${escapeHtml(d1.substring(5))} ➔ <strong>${escapeHtml(targetShow)}</strong>）
                 </button>
-                <button class="btn" style="text-align: left; font-size: 0.85rem; padding: 0.65rem 0.85rem; justify-content: flex-start; gap: 0.5rem; background-color: var(--secondary); color: white;" onclick="resolveRepair('${patient.id}', 'replace', '${d2}', '${targetDateStr}', '${targetMonth}')">
+                <button class="btn" style="text-align: left; font-size: 0.85rem; padding: 0.65rem 0.85rem; justify-content: flex-start; gap: 0.5rem; background-color: var(--secondary); color: white;" onclick="resolveRepair('${escapeHtml(patient.id)}', 'replace', '${escapeHtml(d2)}', '${escapeHtml(targetDateStr)}', '${escapeHtml(targetMonth)}')">
                     <i data-lucide="edit-3" style="width: 16px; height: 16px;"></i>
-                    2回目の修正（${d2.substring(5)} ➔ <strong>${targetShow}</strong>）
+                    2回目の修正（${escapeHtml(d2.substring(5))} ➔ <strong>${escapeHtml(targetShow)}</strong>）
                 </button>
-                <button class="btn btn-secondary" style="text-align: left; font-size: 0.85rem; padding: 0.65rem 0.85rem; justify-content: flex-start; gap: 0.5rem; background-color: #cbd5e1; color: #334155; border: none; margin-top: 0.25rem;" onclick="resolveRepair('${patient.id}', 'cancel', null, null, null)">
+                <button class="btn btn-secondary" style="text-align: left; font-size: 0.85rem; padding: 0.65rem 0.85rem; justify-content: flex-start; gap: 0.5rem; background-color: #cbd5e1; color: #334155; border: none; margin-top: 0.25rem;" onclick="resolveRepair('${escapeHtml(patient.id)}', 'cancel', null, null, null)">
                     <i data-lucide="x-circle" style="width: 16px; height: 16px;"></i>
                     キャンセル（追加しない）
                 </button>
@@ -3109,30 +3330,30 @@
                     </div>
                     <div class="item-info">
                         <div class="item-name" style="${isCancelled ? 'text-decoration: line-through; color: var(--text-muted);' : ''}; font-size: 1.05rem; line-height: 1.3;">
-                            <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal; margin-bottom: 0.1rem;">${ap.room}号室</div>
-                            <div>${ap.name}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal; margin-bottom: 0.1rem;">${escapeHtml(ap.room)}号室</div>
+                            <div>${escapeHtml(ap.name)}</div>
                         </div>
                         <div style="margin-top: 0.35rem;">
-                            <input type="text" class="today-memo-input" id="today-memo-input-${ap.id}" placeholder="本日のメモ..." value="${ap.todayMemo || ''}" oninput="updateTodayMemo('${ap.id}', this.value, 'card')" onmousedown="event.stopPropagation()" style="width: 100%; font-size: 0.75rem; padding: 0.2rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" ${isCancelled ? 'disabled' : ''}>
+                            <input type="text" class="today-memo-input" id="today-memo-input-${escapeHtml(ap.id)}" placeholder="本日のメモ..." value="${escapeHtml(ap.todayMemo || '')}" oninput="updateTodayMemo('${escapeHtml(ap.id)}', this.value, 'card')" onmousedown="event.stopPropagation()" style="width: 100%; font-size: 0.75rem; padding: 0.2rem 0.4rem; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" ${isCancelled ? 'disabled' : ''}>
                         </div>
                     </div>
-                    <div class="item-times" id="times-display-${ap.id}" style="font-size: 0.8rem; margin-right: 0.25rem;">
+                    <div class="item-times" id="times-display-${escapeHtml(ap.id)}" style="font-size: 0.8rem; margin-right: 0.25rem;">
                         <div>医師: ${isCancelled ? '不実施' : '計算中...'}</div>
                         <div>衛生士: ${isCancelled ? '不実施' : '計算中...'}</div>
                     </div>
                     <div class="item-actions" style="display: flex; gap: 0.25rem; align-items: center;">
                         <div style="display: flex; flex-direction: column; gap: 0.25rem;">
                             <!-- 実施・キャンセル切り替えボタン -->
-                            <button class="${statusBtnClass}" onclick="togglePatientStatus('${ap.id}')" title="往診を実施したかどうかを切り替えます" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
-                                ${statusBtnText}
+                            <button class="${escapeHtml(statusBtnClass)}" onclick="togglePatientStatus('${escapeHtml(ap.id)}')" title="往診を実施したかどうかを切り替えます" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
+                                ${escapeHtml(statusBtnText)}
                             </button>
                             <!-- 回数切り替えボタン -->
-                            <button class="${toggleBtnClass}" onclick="toggleVisitCount('${ap.id}')" ${isCancelled ? 'disabled' : ''} title="クリックで往診タイプを切り替え" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
-                                ${toggleBtnText}
+                            <button class="${escapeHtml(toggleBtnClass)}" onclick="toggleVisitCount('${escapeHtml(ap.id)}')" ${isCancelled ? 'disabled' : ''} title="クリックで往診タイプを切り替え" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
+                                ${escapeHtml(toggleBtnText)}
                             </button>
                             <!-- 食事区分切り替えボタン -->
-                            <button class="${mealBtnClass}" onclick="toggleMealStatus('${ap.id}')" title="クリックで食事区分を切り替え" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
-                                ${mealBtnText}
+                            <button class="${escapeHtml(mealBtnClass)}" onclick="toggleMealStatus('${escapeHtml(ap.id)}')" title="クリックで食事区分を切り替え" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
+                                ${escapeHtml(mealBtnText)}
                             </button>
                         </div>
                     </div>
@@ -3272,8 +3493,8 @@
                     const el = document.getElementById(`times-display-${p.id}`);
                     if (el) {
                         el.innerHTML = `
-                            <div style="color: var(--danger); text-decoration: line-through;">医師: 不実施</div>
-                            <div style="color: var(--danger); text-decoration: line-through;">衛生士: 不実施</div>
+                            <div style="color: var(--danger);">医師: 不実施</div>
+                            <div style="color: var(--danger);">衛生士: 不実施</div>
                         `;
                     }
                 }
@@ -3321,8 +3542,8 @@
 
                 if (el) {
                     el.innerHTML = `
-                        <div>医師: <span class="font-bold" style="color: ${docStart !== null ? '#1e40af' : '#64748b'};">${p.docTimeStr}</span></div>
-                        <div>衛生士: <span class="font-bold" style="color: #059669;">${p.hygTimeStr}</span></div>
+                        <div>医師: <span class="font-bold" style="color: ${docStart !== null ? '#1e40af' : '#64748b'};">${escapeHtml(p.docTimeStr)}</span></div>
+                        <div>衛生士: <span class="font-bold" style="color: #059669;">${escapeHtml(p.hygTimeStr)}</span></div>
                     `;
                 }
 
@@ -3359,6 +3580,23 @@
             return `${h}:${m}`;
         }
 
+        // HTMLエスケープ関数
+        function escapeHtml(str) {
+            if (typeof str !== 'string') {
+                return str === undefined || str === null ? '' : String(str);
+            }
+            return str.replace(/[&<>'"]/g, function(tag) {
+                const chars = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                };
+                return chars[tag] || tag;
+            });
+        }
+
         // 各種レポート帳票の更新
         function updateReports() {
             const visitDateStr = appState.selectedDate ? appState.selectedDate.replace(/-/g, '/') : '-';
@@ -3384,7 +3622,6 @@
                     // キャンセルの人は印刷スケジュールから除外、または取消線を引く（ここでは除外せず取消線で表示）
                     const isCancelled = p.status === 'cancelled';
                     if (isCancelled) {
-                        tr.style.textDecoration = 'line-through';
                         tr.style.color = '#777';
                         tr.style.backgroundColor = '#fafafa';
                     }
@@ -3397,9 +3634,18 @@
                         return td;
                     };
 
-                    tr.appendChild(createCell(idx + 1, true)); // NO.
-                    tr.appendChild(createCell(p.room, true));
-                    tr.appendChild(createCell(p.karteNo, true));
+                    const tdNo = createCell(idx + 1, true);
+                    const tdRoom = createCell(p.room, true);
+                    const tdKarte = createCell(p.karteNo, true);
+                    if (isCancelled) {
+                        tdNo.style.textDecoration = 'line-through';
+                        tdRoom.style.textDecoration = 'line-through';
+                        tdKarte.style.textDecoration = 'line-through';
+                    }
+
+                    tr.appendChild(tdNo); // NO.
+                    tr.appendChild(tdRoom);
+                    tr.appendChild(tdKarte);
                     
                     // 感染
                     const tdInfection = document.createElement('td');
@@ -3407,7 +3653,11 @@
                     tdInfection.style.textAlign = 'center';
                     tr.appendChild(tdInfection);
 
-                    tr.appendChild(createCell(p.name, false, true));
+                    const tdName = createCell(p.name, false, true);
+                    if (isCancelled) {
+                        tdName.style.textDecoration = 'line-through';
+                    }
+                    tr.appendChild(tdName);
                     tr.appendChild(createCell(isCancelled ? '不実施' : p.docTimeStr, true, p.currentVisitCount === 1 && !isCancelled));
                     tr.appendChild(createCell(isCancelled ? '不実施' : p.hygTimeStr, true, !isCancelled));
                     tr.appendChild(createCell(p.denture, true)); // 口腔状況 (義歯)
@@ -3486,20 +3736,23 @@
                         tr.classList.add('non-oral-row');
                     }
                     
+                    // その月の実績（Excelに保存されている日付）を抽出
                     let monthVisits = p.visits.filter(v => v.startsWith(targetMonth));
-                    let v1 = monthVisits.length > 0 ? monthVisits[0] : null;
-                    let v2 = monthVisits.length > 1 ? monthVisits[1] : null;
 
-                    // 本日往診した人のうち、ステータスが「実施(completed)」である場合のみ実績に算入
+                    // 本日往診した（チェックを入れて completed になっている）予定があり、
+                    // かつその日の日付が Excel の実績に含まれていない場合、一時的に当日の日付を実績リストに加える
                     const activeP = appState.activePatients.find(ap => ap.id === p.id && ap.status === 'completed');
                     if (activeP) {
                         const todayFormat = visitDateStr;
-                        if (activeP.currentVisitCount === 2) {
-                            if (v1 !== todayFormat) v2 = todayFormat;
-                        } else {
-                            v1 = todayFormat;
+                        if (!monthVisits.includes(todayFormat)) {
+                            monthVisits.push(todayFormat);
                         }
                     }
+
+                    // 日付順にソートして1回目・2回目を決定（キャッシュデータによるExcel実績の上書き破壊を防止）
+                    monthVisits.sort();
+                    let v1 = monthVisits.length > 0 ? monthVisits[0] : null;
+                    let v2 = monthVisits.length > 1 ? monthVisits[1] : null;
 
                     let countText = '未訪問';
                     let badgeClass = 'badge-danger';
@@ -3532,7 +3785,7 @@
                     
                     const tdCount = document.createElement('td');
                     tdCount.className = 'text-center';
-                    tdCount.innerHTML = `<span class="badge ${badgeClass}">${countText}</span>`;
+                    tdCount.innerHTML = `<span class="badge ${escapeHtml(badgeClass)}">${escapeHtml(countText)}</span>`;
                     tr.appendChild(tdCount);
 
                     tr.appendChild(createCell(historyDetail, true));
@@ -3606,7 +3859,7 @@
                     const excelRowIndex = r - (range.s.r + 1);
                     
                     // 備考列・栄養列の更新
-                    const targetP = appState.patients.find(p => p.excelRowIndex === excelRowIndex && p.id.startsWith(sheetName));
+                    const targetP = appState.patients.find(p => p.excelRowIndex === excelRowIndex && p.id.startsWith(sheetName + '_'));
                     if (targetP) {
                         if (colMemoIdx !== -1) {
                             const memoCellAddr = XLSX.utils.encode_cell({r: r, c: colMemoIdx});
@@ -3623,7 +3876,7 @@
                     }
                     
                     // 本日の activePatients の中から該当患者を探す
-                    const activeP = appState.activePatients.find(ap => ap.excelRowIndex === excelRowIndex && ap.id.startsWith(sheetName));
+                    const activeP = appState.activePatients.find(ap => ap.excelRowIndex === excelRowIndex && ap.id.startsWith(sheetName + '_'));
 
                     if (activeP) {
                         // 患者の現在の全訪問日リスト（未編集状態）を取得
@@ -4015,6 +4268,32 @@
                 const isActiveAndCompleted = appState.activePatients.some(ap => ap.id === p.id && ap.status === 'completed');
                 return hasVisit || isActiveAndCompleted;
             });
+
+            // 患者の当月往診日リストを取得するヘルパー
+            const getPatientVisitsInMonth = (p, tMonth) => {
+                const dates = p.visits.filter(v => v.replace(/\//g, '-').startsWith(tMonth.replace(/\//g, '-')));
+                const todayStr = formatDateString(new Date(appState.selectedDate));
+                if (todayStr.replace(/\//g, '-').startsWith(tMonth.replace(/\//g, '-'))) {
+                    const isActiveAndCompleted = appState.activePatients.some(ap => ap.id === p.id && ap.status === 'completed');
+                    if (isActiveAndCompleted && !dates.includes(todayStr)) {
+                        dates.push(todayStr);
+                    }
+                }
+                return dates.sort();
+            };
+
+            // 日付順で並べる（最初の往診日が早い順 ➔ 同日の場合は部屋番号順）
+            activePatientsInMonth.sort((a, b) => {
+                const datesA = getPatientVisitsInMonth(a, targetMonth);
+                const datesB = getPatientVisitsInMonth(b, targetMonth);
+                
+                const firstA = datesA[0] || '9999/99/99';
+                const firstB = datesB[0] || '9999/99/99';
+                if (firstA !== firstB) {
+                    return firstA.localeCompare(firstB);
+                }
+                return naturalCompare(a.room, b.room);
+            });
             
             const N = activePatientsInMonth.length;
             
@@ -4070,7 +4349,7 @@
                     page2Html += `
                         <div class="receipt-break-page" style="margin-top: 2rem; border-top: 1px dashed #64748b; padding-top: 1rem;">
                             <div style="font-size: 10pt; font-weight: bold; margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
-                                <span>${facilityName} ${year}年${month}月 (2ページ目)</span>
+                                <span>${escapeHtml(facilityName)} ${year}年${month}月 (2ページ目)</span>
                             </div>
                     `;
                     page2Html += makeTableHeader();
@@ -4082,14 +4361,11 @@
                 const karte = isExist ? p.karteNo : '';
                 
                 let rowStyle = '';
-                if (isExist && p.isNonOral) {
-                    rowStyle = 'background-color: #f1f5f9;';
-                }
                 
                 const rowHtml = `
                     <tr style="${rowStyle}">
-                        <td class="text-center" style="font-weight: bold;">${karte}</td>
-                        <td style="font-weight: bold; padding-left: 6px;">${name}</td>
+                        <td class="text-center" style="font-weight: bold;">${escapeHtml(karte)}</td>
+                        <td style="font-weight: bold; padding-left: 6px;">${escapeHtml(name)}</td>
                         ${activeDates.map(d => {
                             const visited = isExist && p.visits.includes(d);
                             // 2. 背景色に !important を付与し、非経口行などの背景に隠れないように修正
@@ -4231,6 +4507,32 @@
                 return hasVisit || isActiveAndCompleted;
             });
 
+            // 患者の当月往診日リストを取得するヘルパー
+            const getPatientVisitsInMonth = (p, tMonth) => {
+                const dates = p.visits.filter(v => v.replace(/\//g, '-').startsWith(tMonth.replace(/\//g, '-')));
+                const todayStr = formatDateString(new Date(appState.selectedDate));
+                if (todayStr.replace(/\//g, '-').startsWith(tMonth.replace(/\//g, '-'))) {
+                    const isActiveAndCompleted = appState.activePatients.some(ap => ap.id === p.id && ap.status === 'completed');
+                    if (isActiveAndCompleted && !dates.includes(todayStr)) {
+                        dates.push(todayStr);
+                    }
+                }
+                return dates.sort();
+            };
+
+            // 日付順で並べる（最初の往診日が早い順 ➔ 同日の場合は部屋番号順）
+            activePatientsInMonth.sort((a, b) => {
+                const datesA = getPatientVisitsInMonth(a, yearMonth);
+                const datesB = getPatientVisitsInMonth(b, yearMonth);
+                
+                const firstA = datesA[0] || '9999/99/99';
+                const firstB = datesB[0] || '9999/99/99';
+                if (firstA !== firstB) {
+                    return firstA.localeCompare(firstB);
+                }
+                return naturalCompare(a.room, b.room);
+            });
+
             const N = activePatientsInMonth.length;
             let maxRows = N;
             if (N <= 50) {
@@ -4252,8 +4554,8 @@
             // 1. タイトルと請求金額数式の配置 (Excelの1行目)
             ws['A1'] = { v: `${facilityName} ${yearMonth.replace('-', '年')}月`, t: 's', s: titleStyle };
             
-            // 請求金額数式: 総合計セル(totalColLabel + sumRowNum) * 10
-            const amountFormula = `="請求金額合計： ￥ " & TEXT(${totalColLabel}${sumRowNum}*10, "#,##0")`;
+            // 請求金額数式: 総合計セル(totalColLabel + sumRowNum)
+            const amountFormula = `="請求金額合計： ￥ " & TEXT(${totalColLabel}${sumRowNum}, "#,##0")`;
             const amountColLabel = getExcelColumnLabel(Math.max(2, totalColIdx - 2));
             ws[`${amountColLabel}1`] = { f: amountFormula, t: 's', s: titleStyle };
 
@@ -4481,7 +4783,7 @@
                     </div>
                     <div>
                         <strong>💵 医療点数入力と請求金額の自動連動：</strong><br>
-                        出力されたエクセルファイル上で、往診実績があった日（薄紫色 <span style="background-color: #d8d3fd; padding: 0.1rem 0.3rem; border-radius: 0.2rem; font-weight: bold; border: 1px solid #b4aeff; color: black;">#D8D3FD</span> のセル）に手動で点数を入力すると、右端の「合計」、最下部の「総合計」、および1行目の「請求金額合計（1点＝10円換算のカンマ区切り円表記）」がすべて自動でリアルタイム連動計算されます。
+                        出力されたエクセルファイル上で、往診実績があった日（薄紫色 <span style="background-color: #d8d3fd; padding: 0.1rem 0.3rem; border-radius: 0.2rem; font-weight: bold; border: 1px solid #b4aeff; color: black;">#D8D3FD</span> のセル）に手動で点数を入力すると、右端の「合計」、最下部の「総合計」、および1行目の「請求金額合計（カンマ区切り円表記）」がすべて自動でリアルタイム連動計算されます。
                     </div>
                     <div>
                         <strong>🖨️ エクセルでのB5縦・綺麗に収める印刷のコツ：</strong><br>
