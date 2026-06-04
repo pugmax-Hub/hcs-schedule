@@ -3878,10 +3878,10 @@
                     // 本日の activePatients の中から該当患者を探す
                     const activeP = appState.activePatients.find(ap => ap.excelRowIndex === excelRowIndex && ap.id.startsWith(sheetName + '_'));
 
+                    // 更新対象の診察日リスト。基本は Excelから読んだ元データ（targetP.visits）をコピー
+                    let currentVisits = (targetP && targetP.visits) ? [...targetP.visits] : [];
+
                     if (activeP) {
-                        // 患者の現在の全訪問日リスト（未編集状態）を取得
-                        let currentVisits = activeP.visits ? [...activeP.visits] : [];
-                        
                         if (activeP.status === 'completed') {
                             if (!currentVisits.includes(visitDateSlash)) {
                                 currentVisits.push(visitDateSlash);
@@ -3889,36 +3889,44 @@
                         } else if (activeP.status === 'cancelled') {
                             currentVisits = currentVisits.filter(v => v !== visitDateSlash);
                         }
-                        
-                        // 同一月に最大2回までに制限
-                        const visitsByMonth = {};
-                        currentVisits.forEach(v => {
-                            const m = v.substring(0, 7); // "YYYY/MM"
-                            if (!visitsByMonth[m]) visitsByMonth[m] = [];
-                            visitsByMonth[m].push(v);
-                        });
-                        let pruned = [];
-                        Object.keys(visitsByMonth).sort().forEach(m => {
-                            let dates = visitsByMonth[m].sort();
-                            if (dates.length > 2) {
-                                // 3回以上ある場合は最初と最後（1回目と2回目）を残す
-                                dates = [dates[0], dates[dates.length - 1]];
-                            }
-                            pruned = pruned.concat(dates);
-                        });
-                        currentVisits = pruned;
+                    } else {
+                        // 患者のチェックが外されている場合、今日の往診日（visitDateSlash）が実績リストにあれば削除する
+                        currentVisits = currentVisits.filter(v => v !== visitDateSlash);
+                    }
 
-                        // 日付順にソートして、列数分（最大4つ等）の最新日付のみ残す
-                        currentVisits.sort();
-                        if (currentVisits.length > colVisitIdxs.length) {
-                            currentVisits = currentVisits.slice(currentVisits.length - colVisitIdxs.length);
+                    // 同一月に最大2回までに制限
+                    const visitsByMonth = {};
+                    currentVisits.forEach(v => {
+                        const m = v.substring(0, 7); // "YYYY/MM"
+                        if (!visitsByMonth[m]) visitsByMonth[m] = [];
+                        visitsByMonth[m].push(v);
+                    });
+                    let pruned = [];
+                    Object.keys(visitsByMonth).sort().forEach(m => {
+                        let dates = visitsByMonth[m].sort();
+                        if (dates.length > 2) {
+                            // 3回以上ある場合は最初と最後（1回目と2回目）を残す
+                            dates = [dates[0], dates[dates.length - 1]];
                         }
+                        pruned = pruned.concat(dates);
+                    });
+                    currentVisits = pruned;
 
-                        // セルに書き込み
-                        colVisitIdxs.forEach((colIdx, i) => {
-                            const cellAddr = XLSX.utils.encode_cell({r: r, c: colIdx});
-                            writeCell(ws, cellAddr, currentVisits[i] || '');
-                        });
+                    // 日付順にソートして、列数分（最大4つ等）の最新日付のみ残す
+                    currentVisits.sort();
+                    if (currentVisits.length > colVisitIdxs.length) {
+                        currentVisits = currentVisits.slice(currentVisits.length - colVisitIdxs.length);
+                    }
+
+                    // セルに書き込み（チェックが外れた場合は日付が空欄として上書きされ消去される）
+                    colVisitIdxs.forEach((colIdx, i) => {
+                        const cellAddr = XLSX.utils.encode_cell({r: r, c: colIdx});
+                        writeCell(ws, cellAddr, currentVisits[i] || '');
+                    });
+
+                    // メモリ上の患者データの実績日も同期更新
+                    if (targetP) {
+                        targetP.visits = currentVisits;
                     }
                 }
             });
