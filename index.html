@@ -402,6 +402,31 @@
             background-color: var(--primary-light);
         }
 
+        /* カラム開閉用スタイル */
+        .patient-table.hide-karte .col-karte { display: none !important; }
+        .patient-table.hide-infection .col-infection { display: none !important; }
+        .patient-table.hide-denture .col-denture { display: none !important; }
+        .patient-table.hide-sc .col-sc-date, .patient-table.hide-sc .col-sc-info { display: none !important; }
+
+        /* SC実施トグルのカードボタン用スタイル */
+        .sc-perf-btn {
+            background-color: #f1f5f9;
+            color: #64748b;
+            border: 1px solid #cbd5e1;
+        }
+        .sc-perf-btn:hover {
+            background-color: #e2e8f0;
+        }
+        .sc-perf-btn.active {
+            background-color: #f3e8ff;
+            color: #6b21a8;
+            border-color: #d8b4fe;
+            font-weight: bold;
+        }
+        .sc-perf-btn.active:hover {
+            background-color: #e9d5ff;
+        }
+
         /* 非経口患者用の薄グレー背景スタイル（印刷時も適用） */
         .non-oral-row {
             background-color: #cbd5e1 !important;
@@ -1077,7 +1102,7 @@
             }
 
             /* テーブルの特定列をスマホで非表示 */
-            .col-karte, .col-infection, .col-denture, .col-pre {
+            .col-karte, .col-infection, .col-denture, .col-pre, .col-sc-date, .col-sc-info {
                 display: none !important;
             }
 
@@ -1549,17 +1574,21 @@
                     <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
                     ② 往診リスト印刷
                 </button>
+                <button class="tab-btn" data-tab="report-scaling-tab">
+                    <i data-lucide="clipboard-list" style="width: 18px; height: 18px;"></i>
+                    ③ スケーリングリスト印刷
+                </button>
                 <button class="tab-btn" data-tab="report-fax-tab">
                     <i data-lucide="send" style="width: 18px; height: 18px;"></i>
-                    ③ FAX送信表印刷
+                    ④ FAX送信表印刷
                 </button>
                 <button class="tab-btn" data-tab="report-times-tab">
                     <i data-lucide="calendar-check" style="width: 18px; height: 18px;"></i>
-                    ④ 往診回数表印刷
+                    ⑤ 往診回数表印刷
                 </button>
                 <button class="tab-btn" data-tab="report-receipt-tab">
                     <i data-lucide="receipt" style="width: 18px; height: 18px;"></i>
-                    ⑤ 受付集計表
+                    ⑥ 受付集計表
                 </button>
             </div>
 
@@ -1592,14 +1621,29 @@
                                 <span class="badge badge-primary" id="patient-count-badge">0名登録</span>
                             </div>
                         </div>
-                        <!-- 全解除ボタンのみをヘッダーの下に固定配置 -->
-                        <div style="display: flex; gap: 0.5rem; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border); background-color: #fafafa;">
-                            <button class="btn btn-secondary" onclick="deselectAllPatients()" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;">
+                        <!-- 全解除ボタンと表示項目開閉スイッチ -->
+                        <div style="display: flex; gap: 1rem; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border); background-color: #fafafa; flex-wrap: wrap;">
+                            <button class="btn btn-secondary" onclick="deselectAllPatients()" style="padding: 0.4rem 0.8rem; font-size: 0.9rem; margin-right: 0.5rem;">
                                 <i data-lucide="square" style="width: 16px; height: 16px;"></i> 全解除
                             </button>
+                            <div style="display: flex; gap: 0.75rem; align-items: center; font-size: 0.85rem; color: var(--text-dark); flex-wrap: wrap;">
+                                <span style="font-weight: bold; color: #475569;">表示項目:</span>
+                                <label style="display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="toggle-col-karte" onchange="toggleColumnVisibility('karte', this.checked)"> カルテNo
+                                </label>
+                                <label style="display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="toggle-col-infection" onchange="toggleColumnVisibility('infection', this.checked)"> 感染
+                                </label>
+                                <label style="display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="toggle-col-denture" onchange="toggleColumnVisibility('denture', this.checked)"> 口腔状況
+                                </label>
+                                <label style="display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; user-select: none;">
+                                    <input type="checkbox" id="toggle-col-sc" onchange="toggleColumnVisibility('sc', this.checked)"> スケーリング
+                                </label>
+                            </div>
                         </div>
                         <div class="panel-body">
-                            <table class="patient-table">
+                            <table class="patient-table hide-karte hide-infection hide-denture hide-sc">
                                 <thead>
                                     <tr>
                                         <th class="checkbox-cell">選択</th>
@@ -1609,6 +1653,8 @@
                                         <th>名前</th>
                                         <th class="col-denture">口腔状況</th>
                                         <th>当月実績</th>
+                                        <th class="col-sc-date" style="width: 70px;">SC日付</th>
+                                        <th class="col-sc-info" style="width: 180px;">SC情報</th>
                                         <th class="col-pre">注意事項</th>
                                     </tr>
                                 </thead>
@@ -1692,7 +1738,44 @@
                 </div>
             </div>
 
-            <!-- ③ FAX送信表印刷タブ -->
+            <!-- ③ スケーリングリスト印刷タブ -->
+            <div class="tab-content" id="report-scaling-tab">
+                <div class="preview-controls">
+                    <span style="font-weight: bold; color: var(--text-dark);">🖨️ 選択患者の前回スケーリング履歴およびメモの印刷リストです。</span>
+                    <button class="btn btn-secondary" onclick="window.print()">
+                        <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
+                        スケーリングリストを印刷 (A4)
+                    </button>
+                </div>
+                <div class="print-area-wrapper">
+                    <div class="a4-page" id="print-scaling-page">
+                        <span class="print-indicator">印刷プレビュー（A4縦）</span>
+                        <div class="report-header">
+                            <div class="report-title" id="scaling-report-title">〇〇 スケーリングリスト</div>
+                            <div class="report-meta">
+                                <strong>選択日付：</strong><span id="scaling-report-date">2026/05/26</span>
+                            </div>
+                        </div>
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 8%;">NO.</th>
+                                    <th style="width: 12%;">部屋</th>
+                                    <th style="width: 15%;">カルテNo</th>
+                                    <th style="width: 25%;">氏名</th>
+                                    <th style="width: 15%;">前回スケーリング日</th>
+                                    <th style="width: 25%;">SC情報 (クリックで編集可)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="print-scaling-tbody">
+                                <!-- JSで動的生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ④ FAX送信表印刷タブ -->
             <div class="tab-content" id="report-fax-tab">
                 <div class="preview-controls">
                     <span style="font-weight: bold; color: var(--text-dark);">🖨️ 事前に施設へ往診予定者をお知らせするFAX用送信表です。</span>
@@ -1763,7 +1846,7 @@
                 </div>
             </div>
 
-            <!-- ④ 往診回数表印刷タブ -->
+            <!-- ⑤ 往診回数表印刷タブ -->
             <div class="tab-content" id="report-times-tab">
                 <div class="preview-controls">
                     <span style="font-weight: bold; color: var(--text-dark);">🖨️ 実績保存後の当月往診履歴です。</span>
@@ -1808,7 +1891,7 @@
                 </div>
             </div>
 
-            <!-- ⑤ 受付集計表タブ -->
+            <!-- ⑥ 受付集計表タブ -->
             <div class="tab-content" id="report-receipt-tab">
                 <div class="preview-controls">
                     <span style="font-weight: bold; color: var(--text-dark);">📊 B5縦サイズに最適化された受付集計表です。</span>
@@ -1893,6 +1976,7 @@
             setupControlEvents();
             setupMobileEvents();
             setupHelpEvents();
+            initColumnVisibility();
             
             // 初回起動時（ブラウザで開いた直後）は常に今日の日付を初期値にする
             const today = new Date().toISOString().split('T')[0];
@@ -1942,6 +2026,37 @@
             document.getElementById('start-time').value = savedStartTime;
             appState.startTime = savedStartTime;
         });
+
+        function toggleColumnVisibility(colName, isChecked) {
+            const table = document.querySelector('.patient-table');
+            if (!table) return;
+            const className = `hide-${colName}`;
+            if (isChecked) {
+                table.classList.remove(className);
+            } else {
+                table.classList.add(className);
+            }
+            localStorage.setItem(`hcs_show_col_${colName}`, isChecked ? 'true' : 'false');
+        }
+
+        function initColumnVisibility() {
+            ['karte', 'infection', 'denture', 'sc'].forEach(col => {
+                const saved = localStorage.getItem(`hcs_show_col_${col}`);
+                const isChecked = saved === 'true'; // デフォルトは false (閉じた状態)
+                const chk = document.getElementById(`toggle-col-${col}`);
+                if (chk) {
+                    chk.checked = isChecked;
+                }
+                const table = document.querySelector('.patient-table');
+                if (table) {
+                    if (isChecked) {
+                        table.classList.remove(`hide-${col}`);
+                    } else {
+                        table.classList.add(`hide-${col}`);
+                    }
+                }
+            });
+        }
 
         function initLucide() {
             lucide.createIcons();
@@ -2505,6 +2620,8 @@
             let colPrecautions = -1;
             let colMemo = -1;
             let colNutrition = -1; // 栄養列
+            let colScDate = -1; // SC日付列
+            let colScInfo = -1; // SC情報列
 
             // 1行目(ヘッダー)を走査
             for (let c = range.s.c; c <= range.e.c; ++c) {
@@ -2523,6 +2640,8 @@
                     if (['注意事項', '注意', 'Precautions'].includes(val)) colPrecautions = c;
                     if (['備考', 'メモ', 'Memo'].includes(val)) colMemo = c;
                     if (['栄養', 'Nutrition'].includes(val)) colNutrition = c;
+                    if (['SC日付', '前回スケーリング日', 'スケーリング日', 'ScalingDate'].includes(val)) colScDate = c;
+                    if (['SC情報', 'SCメモ', 'スケーリング情報', 'スケーリングメモ', 'ScalingMemo'].includes(val)) colScInfo = c;
                 }
             }
 
@@ -2592,7 +2711,9 @@
                     nutrition: nutritionVal,
                     infection: getCellVal(colInfection),
                     isExcluded: memoVal.includes('除外'),
-                    isNonOral: nutritionVal.includes('非経口')
+                    isNonOral: nutritionVal.includes('非経口'),
+                    scDate: formatDateString(getCellVal(colScDate)),
+                    scInfo: getCellVal(colScInfo)
                 };
                 patientsList.push(p);
             }
@@ -2628,7 +2749,10 @@
                     currentVisitCount: ap.currentVisitCount,
                     todayMemo: ap.todayMemo,
                     isNonOral: ap.isNonOral,
-                    nutrition: ap.nutrition
+                    nutrition: ap.nutrition,
+                    scPerformedToday: ap.scPerformedToday,
+                    originalScDate: ap.originalScDate,
+                    scDate: ap.scDate
                 }));
                 localStorage.setItem(key, JSON.stringify(draftData));
             }
@@ -2691,6 +2815,18 @@
                                 pCopy.nutrition = draftItem.nutrition;
                                 p.nutrition = draftItem.nutrition;
                             }
+                            if (draftItem.scPerformedToday !== undefined) {
+                                pCopy.scPerformedToday = draftItem.scPerformedToday;
+                                p.scPerformedToday = draftItem.scPerformedToday;
+                            }
+                            if (draftItem.originalScDate !== undefined) {
+                                pCopy.originalScDate = draftItem.originalScDate;
+                                p.originalScDate = draftItem.originalScDate;
+                            }
+                            if (draftItem.scDate !== undefined) {
+                                pCopy.scDate = draftItem.scDate;
+                                p.scDate = draftItem.scDate;
+                            }
                             appState.activePatients.push(pCopy);
                         }
                     });
@@ -2698,6 +2834,13 @@
                     console.error('Failed to parse draft data', e);
                 }
             }
+
+            // 左側テーブルのSC日付表示を復元された状態に合わせて更新
+            appState.activePatients.forEach(ap => {
+                if (ap.scDate) {
+                    updateLeftTableScDate(ap.id, ap.scDate);
+                }
+            });
         }
 
         // 日付が変わった時の処理
@@ -2927,6 +3070,15 @@
                 if (p.precautions && p.precautions !== '-') {
                     mobileSubHtml += `<span class="mobile-only-inline badge badge-danger" style="font-size: 0.7rem; padding: 0.1rem 0.35rem; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(p.precautions)}">⚠️ ${escapeHtml(p.precautions)}</span>`;
                 }
+                if ((p.scDate && p.scDate !== '-') || (p.scInfo && p.scInfo.trim() !== '')) {
+                    const scText = (p.scInfo || '').trim();
+                    const scDateText = (p.scDate && p.scDate !== '-') ? p.scDate.substring(5) : ''; // MM/DD
+                    let scDisplay = 'SC: ';
+                    if (scDateText) scDisplay += scDateText;
+                    if (scText) scDisplay += (scDateText ? ' ' : '') + scText;
+                    
+                    mobileSubHtml += `<span class="mobile-only-inline badge" style="font-size: 0.7rem; margin-right: 0.25rem; padding: 0.1rem 0.35rem; background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="SC履歴: ${escapeHtml(p.scDate || '')} / ${escapeHtml(scText)}">${escapeHtml(scDisplay)}</span>`;
+                }
                 if (mobileSubHtml) {
                     nameHtml += `<div class="mobile-only-block" style="margin-top: 0.25rem; line-height: 1.2;">${mobileSubHtml}</div>`;
                 }
@@ -2940,11 +3092,81 @@
                 tdStatus.innerHTML = historyBadgeHtml;
                 tr.appendChild(tdStatus);
 
-                const tdPre = createTd(p.precautions, 'col-pre');
-                tdPre.style.maxWidth = '220px';
-                tdPre.style.overflow = 'hidden';
-                tdPre.style.textOverflow = 'ellipsis';
-                tdPre.style.whiteSpace = 'nowrap';
+                // SC日付列の追加
+                const tdScDate = document.createElement('td');
+                tdScDate.className = 'col-sc-date';
+                tdScDate.style.textAlign = 'center';
+                tdScDate.style.lineHeight = '1.1';
+                tdScDate.style.fontSize = '0.75rem';
+                
+                let scDateHtml = '-';
+                if (p.scDate && p.scDate !== '-') {
+                    const parts = p.scDate.split('/');
+                    if (parts.length === 3) {
+                        scDateHtml = `<span style="color: #64748b; font-size: 0.7rem;">${parts[0]}</span><br><span style="font-weight: bold;">${parts[1]}/${parts[2]}</span>`;
+                    } else {
+                        scDateHtml = escapeHtml(p.scDate);
+                    }
+                }
+                tdScDate.innerHTML = scDateHtml;
+                tr.appendChild(tdScDate);
+
+                // SC情報列の追加（編集可能）
+                const tdScInfo = document.createElement('td');
+                tdScInfo.className = 'col-sc-info';
+                
+                const scInput = document.createElement('input');
+                scInput.type = 'text';
+                scInput.className = 'sc-info-input';
+                scInput.value = p.scInfo || '';
+                scInput.placeholder = 'SCメモ...';
+                scInput.id = `sc-info-setup-${p.id}`; // 相互同期時に特定するためのID
+                scInput.style.width = '100%';
+                scInput.style.padding = '0.2rem 0.4rem';
+                scInput.style.border = '1px solid var(--border)';
+                scInput.style.borderRadius = '4px';
+                scInput.style.boxSizing = 'border-box';
+                scInput.style.fontSize = '0.75rem';
+                
+                scInput.addEventListener('input', (e) => {
+                    updateScalingInfo(p.id, e.target.value, 'setup');
+                });
+                
+                // バブリング防止
+                scInput.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                });
+                
+                tdScInfo.appendChild(scInput);
+                tr.appendChild(tdScInfo);
+
+                // 注意事項列の追加（編集可能）
+                const tdPre = document.createElement('td');
+                tdPre.className = 'col-pre';
+                
+                const preInput = document.createElement('input');
+                preInput.type = 'text';
+                preInput.className = 'pre-info-input';
+                preInput.value = p.precautions || '';
+                preInput.placeholder = '注意事項...';
+                preInput.id = `pre-info-setup-${p.id}`;
+                preInput.style.width = '100%';
+                preInput.style.padding = '0.2rem 0.4rem';
+                preInput.style.border = '1px solid var(--border)';
+                preInput.style.borderRadius = '4px';
+                preInput.style.boxSizing = 'border-box';
+                preInput.style.fontSize = '0.75rem';
+                
+                preInput.addEventListener('input', (e) => {
+                    updatePrecautionsInfo(p.id, e.target.value, 'setup');
+                });
+                
+                // バブリング防止
+                preInput.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                });
+                
+                tdPre.appendChild(preInput);
                 tr.appendChild(tdPre);
 
                 tbody.appendChild(tr);
@@ -3330,7 +3552,12 @@
                     </div>
                     <div class="item-info">
                         <div class="item-name" style="${isCancelled ? 'text-decoration: line-through; color: var(--text-muted);' : ''}; font-size: 1.05rem; line-height: 1.3;">
-                            <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal; margin-bottom: 0.1rem;">${escapeHtml(ap.room)}号室</div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal; margin-bottom: 0.1rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>${escapeHtml(ap.room)}号室</span>
+                                <button class="sc-perf-btn ${ap.scPerformedToday ? 'active' : ''}" onclick="toggleScPerformed('${escapeHtml(ap.id)}')" onmousedown="event.stopPropagation()" style="padding: 0.1rem 0.35rem; font-size: 0.7rem; border-radius: 4px; cursor: pointer; transition: all 0.2s; font-family: inherit;" title="本日スケーリングを実施した場合はON（紫色）にします" ${isCancelled ? 'disabled' : ''}>
+                                    SC実施
+                                </button>
+                            </div>
                             <div>${escapeHtml(ap.name)}</div>
                         </div>
                         <div style="margin-top: 0.35rem;">
@@ -3421,6 +3648,113 @@
             }
             
             saveDraft(); // 下書き保存
+        }
+
+        // 「SC情報」を双方向に同期する関数
+        function updateScalingInfo(patientId, val, source) {
+            const master = appState.patients.find(p => p.id === patientId);
+            if (master) {
+                master.scInfo = val;
+            }
+            const active = appState.activePatients.find(ap => ap.id === patientId);
+            if (active) {
+                active.scInfo = val;
+            }
+            if (source !== 'setup') {
+                const setupInput = document.getElementById(`sc-info-setup-${patientId}`);
+                if (setupInput) {
+                    setupInput.value = val;
+                }
+            }
+            if (source !== 'preview') {
+                const previewCell = document.getElementById(`sc-info-preview-${patientId}`);
+                if (previewCell) {
+                    previewCell.textContent = val;
+                }
+            }
+        }
+
+        // 「注意事項」を双方向に同期する関数
+        function updatePrecautionsInfo(patientId, val, source) {
+            const master = appState.patients.find(p => p.id === patientId);
+            if (master) {
+                master.precautions = val;
+            }
+            const active = appState.activePatients.find(ap => ap.id === patientId);
+            if (active) {
+                active.precautions = val;
+            }
+            if (source !== 'setup') {
+                const setupInput = document.getElementById(`pre-info-setup-${patientId}`);
+                if (setupInput) {
+                    setupInput.value = val;
+                }
+            }
+            const previewCell = document.getElementById('preview-pre-cell-' + patientId);
+            if (previewCell) {
+                previewCell.textContent = val;
+            }
+        }
+
+        // SC実施のトグル切り替え関数
+        function toggleScPerformed(patientId) {
+            const patient = appState.activePatients.find(ap => ap.id === patientId);
+            if (!patient) return;
+
+            const master = appState.patients.find(p => p.id === patientId);
+            const selectedDateSlash = appState.selectedDate ? appState.selectedDate.replace(/-/g, '/') : '';
+
+            if (!patient.scPerformedToday) {
+                // ONにする
+                patient.originalScDate = patient.scDate || '';
+                patient.scDate = selectedDateSlash;
+                patient.scPerformedToday = true;
+
+                if (master) {
+                    master.originalScDate = master.scDate || '';
+                    master.scDate = selectedDateSlash;
+                    master.scPerformedToday = true;
+                }
+            } else {
+                // OFFにする（元の状態に復元）
+                const orig = patient.originalScDate || '';
+                patient.scDate = orig;
+                patient.scPerformedToday = false;
+
+                if (master) {
+                    master.scDate = orig;
+                    master.scPerformedToday = false;
+                }
+            }
+
+            renderSelectedList();
+            calculateScheduleTimes();
+            updateLeftTableScDate(patientId, patient.scDate);
+            updateReports();
+            saveDraft(); // 下書き保存して状態を永続化
+        }
+
+        // 左側患者テーブルのSC日付セルを高速直接更新する関数
+        function updateLeftTableScDate(patientId, scDate) {
+            const setupInput = document.getElementById(`sc-info-setup-${patientId}`);
+            if (setupInput) {
+                const tr = setupInput.closest('tr');
+                if (tr) {
+                    const tdScDate = tr.querySelector('.col-sc-date');
+                    if (tdScDate) {
+                        let scDateHtml = '-';
+                        if (scDate && scDate !== '-') {
+                            const parts = scDate.split('/');
+                            if (parts.length === 3) {
+                                scDateHtml = `<span style="color: #64748b; font-size: 0.7rem;">${parts[0]}</span><br><span style="font-weight: bold;">${parts[1]}/${parts[2]}</span>`;
+                            } else {
+                                scDateHtml = escapeHtml(scDate);
+                            }
+                        }
+                        tdScDate.innerHTML = scDateHtml;
+                    }
+                }
+            }
         }
 
         // 往診回数のトグル切り替え
@@ -3663,6 +3997,7 @@
                     tr.appendChild(createCell(p.denture, true)); // 口腔状況 (義歯)
                     
                     const tdPre = createCell(p.precautions);
+                    tdPre.id = `preview-pre-cell-${p.id}`;
                     tdPre.style.fontSize = '8pt';
                     tr.appendChild(tdPre);
                     
@@ -3793,6 +4128,87 @@
                     timesTbody.appendChild(tr);
                 });
             }
+
+            // ================= 4. スケーリングリスト =================
+            renderScalingReport(visitDateStr);
+        }
+
+        // スケーリングリスト帳票の更新
+        function renderScalingReport(visitDateStr) {
+            document.getElementById('scaling-report-title').textContent = `${appState.currentSheet || ''} スケーリングリスト`;
+            document.getElementById('scaling-report-date').textContent = visitDateStr;
+
+            const tbody = document.getElementById('print-scaling-tbody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            const scalingList = appState.activePatients.filter(p =>
+                (p.scDate && p.scDate !== '-' && p.scDate.trim() !== '') ||
+                (p.scInfo && p.scInfo.trim() !== '')
+            );
+
+            if (scalingList.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="padding: 2rem;">スケーリング履歴がある選択患者がいません。</td></tr>';
+            } else {
+                scalingList.forEach((p, idx) => {
+                    const tr = document.createElement('tr');
+                    const isCancelled = p.status === 'cancelled';
+                    if (isCancelled) {
+                        tr.style.color = '#777';
+                        tr.style.backgroundColor = '#fafafa';
+                    }
+
+                    const createCell = (text, center = false, bold = false) => {
+                        const td = document.createElement('td');
+                        td.textContent = text || '';
+                        if (center) td.className = 'text-center';
+                        if (bold) td.style.fontWeight = 'bold';
+                        return td;
+                    };
+
+                    const tdNo = createCell(idx + 1, true);
+                    const tdRoom = createCell(p.room, true);
+                    const tdKarte = createCell(p.karteNo, true);
+                    const tdName = createCell(p.name, false, true);
+                    const tdScDate = createCell(p.scDate || '-', true);
+
+                    if (isCancelled) {
+                        tdNo.style.textDecoration = 'line-through';
+                        tdRoom.style.textDecoration = 'line-through';
+                        tdKarte.style.textDecoration = 'line-through';
+                        tdName.style.textDecoration = 'line-through';
+                        tdScDate.style.textDecoration = 'line-through';
+                    }
+
+                    tr.appendChild(tdNo);
+                    tr.appendChild(tdRoom);
+                    tr.appendChild(tdKarte);
+                    tr.appendChild(tdName);
+                    tr.appendChild(tdScDate);
+
+                    // SC情報セル (編集可能)
+                    const tdScInfo = document.createElement('td');
+                    tdScInfo.className = 'memo-td';
+
+                    const divScInfo = document.createElement('div');
+                    divScInfo.id = `sc-info-preview-${p.id}`;
+                    divScInfo.contentEditable = !isCancelled;
+                    divScInfo.textContent = p.scInfo || '';
+                    divScInfo.className = 'editable-memo-cell';
+                    divScInfo.style.outline = 'none';
+                    divScInfo.style.cursor = isCancelled ? 'default' : 'text';
+                    divScInfo.addEventListener('input', (e) => {
+                        updateScalingInfo(p.id, e.target.textContent, 'preview');
+                    });
+
+                    tdScInfo.appendChild(divScInfo);
+                    tr.appendChild(tdScInfo);
+
+                    tbody.appendChild(tr);
+                });
+
+                adjustRowHeightForA4(tbody, scalingList.length);
+            }
         }
 
         // 実績データを書き戻して、更新版のExcelファイルをエクスポートまたは上書き保存する
@@ -3820,6 +4236,9 @@
                 let colMemoIdx = -1;
                 let colNutritionIdx = -1; // 栄養列
                 let colInfectionIdx = -1; // 感染列
+                let colScDateIdx = -1;    // SC日付列
+                let colScInfoIdx = -1;    // SC情報列
+                let colPrecautionsIdx = -1; // 注意事項列
 
                 // 1行目(ヘッダー)を走査
                 for (let c = range.s.c; c <= range.e.c; ++c) {
@@ -3834,6 +4253,9 @@
                         if (['備考', 'メモ', 'Memo'].includes(val)) colMemoIdx = c;
                         if (['栄養', 'Nutrition'].includes(val)) colNutritionIdx = c;
                         if (['感染', '感染症', 'Infection'].includes(val)) colInfectionIdx = c;
+                        if (['SC日付', '前回スケーリング日', 'スケーリング日', 'ScalingDate'].includes(val)) colScDateIdx = c;
+                        if (['SC情報', 'SCメモ', 'スケーリング情報', 'スケーリングメモ', 'ScalingMemo'].includes(val)) colScInfoIdx = c;
+                        if (['注意事項', '注意', 'Precautions'].includes(val)) colPrecautionsIdx = c;
                     }
                 }
 
@@ -3845,6 +4267,34 @@
                 if (colInfectionIdx === -1 && range.e.c >= 10) {
                     colInfectionIdx = 10;
                 }
+
+                // SC列が見つからない場合の追加位置特定（K/L列fallbackとの衝突を避けるため、M/N列（12/13）以降へ）
+                if (colScDateIdx === -1) {
+                    if (range.e.c < 11) {
+                        colScDateIdx = 12; // M列
+                    } else {
+                        colScDateIdx = range.e.c + 1;
+                    }
+                    if (colScDateIdx > range.e.c) {
+                        range.e.c = colScDateIdx;
+                    }
+                    const addr = XLSX.utils.encode_cell({r: range.s.r, c: colScDateIdx});
+                    writeCell(ws, addr, 'SC日付');
+                }
+                if (colScInfoIdx === -1) {
+                    if (range.e.c < 12) {
+                        colScInfoIdx = 13; // N列
+                    } else {
+                        colScInfoIdx = range.e.c + 1;
+                    }
+                    if (colScInfoIdx > range.e.c) {
+                        range.e.c = colScInfoIdx;
+                    }
+                    const addr = XLSX.utils.encode_cell({r: range.s.r, c: colScInfoIdx});
+                    writeCell(ws, addr, 'SC情報');
+                }
+
+                ws['!ref'] = XLSX.utils.encode_range(range);
 
                 if (colKarteIdx === -1 || colVisitIdxs.length === 0) {
                     console.warn(`Required columns not found in sheet: ${sheetName}`);
@@ -3858,7 +4308,7 @@
                 for (let r = range.s.r + 1; r <= range.e.r; ++r) {
                     const excelRowIndex = r - (range.s.r + 1);
                     
-                    // 備考列・栄養列の更新
+                    // 備考列・栄養列・感染列・SC列の更新
                     const targetP = appState.patients.find(p => p.excelRowIndex === excelRowIndex && p.id.startsWith(sheetName + '_'));
                     if (targetP) {
                         if (colMemoIdx !== -1) {
@@ -3872,6 +4322,18 @@
                         if (colInfectionIdx !== -1) {
                             const infectionCellAddr = XLSX.utils.encode_cell({r: r, c: colInfectionIdx});
                             writeCell(ws, infectionCellAddr, targetP.infection || '');
+                        }
+                        if (colScDateIdx !== -1) {
+                            const scDateCellAddr = XLSX.utils.encode_cell({r: r, c: colScDateIdx});
+                            writeCell(ws, scDateCellAddr, targetP.scDate || '');
+                        }
+                        if (colScInfoIdx !== -1) {
+                            const scInfoCellAddr = XLSX.utils.encode_cell({r: r, c: colScInfoIdx});
+                            writeCell(ws, scInfoCellAddr, targetP.scInfo || '');
+                        }
+                        if (colPrecautionsIdx !== -1) {
+                            const precautionsCellAddr = XLSX.utils.encode_cell({r: r, c: colPrecautionsIdx});
+                            writeCell(ws, precautionsCellAddr, targetP.precautions || '');
                         }
                     }
                     
@@ -4774,6 +5236,11 @@
                         印刷プレビュー（タブ②）の「備考」セルを直接クリックしてメモを入力することも可能です。スケジュールカードの入力欄とリアルタイムで自動同期されます。長いメモを入力しても、印刷時は自動で最大3行に収まるためレイアウトが崩れません。
                     </div>
                     <div>
+                        <strong>🦷 スケーリング（SC）実施と履歴の管理</strong><br>
+                        ・<strong>SC実施ボタン</strong>：右側のスケジュールカードにある「SC実施」を押すと、前回スケーリング日が今日の往診日に自動更新され、左側一覧の表示も2段表示で更新されます。もう一度押してOFFにすると、元の保存されていた日付へ自動で復旧します。<br>
+                        ・<strong>SC情報の直接編集</strong>：「③ スケーリングリスト印刷」タブのプレビューセルを直接クリックして編集でき、左側の患者一覧とリアルタイムで同期されます。
+                    </div>
+                    <div>
                         <strong>🧠 賢い時間計算ロジック</strong><br>
                         ・<strong>2人並行診察</strong>：上から2人ずつペアになり、同じ時間枠に割り当てられます。<br>
                         ・<strong>移動時間・引き継ぎ時間</strong>：次のペアに移る際、および同じ患者さんで医師から衛生士へ切り替わる際に、自動的に「1分」の移動時間を挟むため、時間が被りません。
@@ -4781,7 +5248,7 @@
                 </div>
 
                 <h4 style="color: var(--primary); font-size: 1.05rem; margin-top: 1.75rem; margin-bottom: 0.5rem; border-left: 4px solid var(--primary); padding-left: 0.5rem;">
-                    📊 ⑤ 受付集計表タブ の使い方とエクセル印刷のコツ
+                    📊 ⑥ 受付集計表タブ の使い方とエクセル印刷のコツ
                 </h4>
                 
                 <div style="background-color: #fafaf9; border: 1px solid #e7e5e4; padding: 1rem; border-radius: 0.5rem; font-size: 0.88rem; color: var(--text-dark); display: flex; flex-direction: column; gap: 0.65rem; margin-bottom: 1.25rem;">
