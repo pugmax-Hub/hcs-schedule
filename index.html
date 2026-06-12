@@ -406,7 +406,7 @@
         .patient-table.hide-karte .col-karte { display: none !important; }
         .patient-table.hide-infection .col-infection { display: none !important; }
         .patient-table.hide-denture .col-denture { display: none !important; }
-        .patient-table.hide-sc .col-sc-date, .patient-table.hide-sc .col-sc-info { display: none !important; }
+        .patient-table.hide-sc .col-sc-date, .patient-table.hide-sc .col-sc-info, .patient-table.hide-sc .col-sc-active { display: none !important; }
 
         /* SC実施トグルのカードボタン用スタイル */
         .sc-perf-btn {
@@ -1102,7 +1102,7 @@
             }
 
             /* テーブルの特定列をスマホで非表示 */
-            .col-karte, .col-infection, .col-denture, .col-pre, .col-sc-date, .col-sc-info {
+            .col-karte, .col-infection, .col-denture, .col-pre, .col-sc-date, .col-sc-info, .col-sc-active {
                 display: none !important;
             }
 
@@ -1653,7 +1653,8 @@
                                         <th>名前</th>
                                         <th class="col-denture">口腔状況</th>
                                         <th>当月実績</th>
-                                        <th class="col-sc-date" style="width: 70px;">SC日付</th>
+                                        <th class="col-sc-active" style="width: 60px;">SC実施</th>
+                                        <th class="col-sc-date" style="width: 85px;">SC日付</th>
                                         <th class="col-sc-info" style="width: 180px;">SC情報</th>
                                         <th class="col-pre">注意事項</th>
                                     </tr>
@@ -1759,10 +1760,11 @@
                         <table class="report-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 8%;">NO.</th>
-                                    <th style="width: 12%;">部屋</th>
-                                    <th style="width: 15%;">カルテNo</th>
-                                    <th style="width: 25%;">氏名</th>
+                                    <th style="width: 6%;">NO.</th>
+                                    <th style="width: 10%;">部屋</th>
+                                    <th style="width: 12%;">カルテNo</th>
+                                    <th style="width: 12%;">感染</th>
+                                    <th style="width: 20%;">氏名</th>
                                     <th style="width: 15%;">前回スケーリング日</th>
                                     <th style="width: 25%;">SC情報 (クリックで編集可)</th>
                                 </tr>
@@ -2713,7 +2715,8 @@
                     isExcluded: memoVal.includes('除外'),
                     isNonOral: nutritionVal.includes('非経口'),
                     scDate: formatDateString(getCellVal(colScDate)),
-                    scInfo: getCellVal(colScInfo)
+                    scInfo: getCellVal(colScInfo),
+                    isScActive: false
                 };
                 patientsList.push(p);
             }
@@ -2739,22 +2742,29 @@
             if (!appState.currentSheet || !appState.selectedDate) return;
             const key = `hcs_draft_${appState.currentSheet}_${appState.selectedDate}`;
             
-            if (appState.activePatients.length === 0) {
+            const activeData = appState.activePatients.map(ap => ({
+                id: ap.id,
+                status: ap.status,
+                currentVisitCount: ap.currentVisitCount,
+                todayMemo: ap.todayMemo,
+                isNonOral: ap.isNonOral,
+                nutrition: ap.nutrition,
+                scPerformedToday: ap.scPerformedToday,
+                originalScDate: ap.originalScDate,
+                scDate: ap.scDate
+            }));
+
+            const scActiveIds = appState.patients.filter(p => p.isScActive).map(p => p.id);
+            
+            if (activeData.length === 0 && scActiveIds.length === 0) {
                 // 選択されている患者がゼロの場合は、下書きキー自体を削除する（カレンダーのハイライトをリアルタイムで消すため）
                 localStorage.removeItem(key);
             } else {
-                const draftData = appState.activePatients.map(ap => ({
-                    id: ap.id,
-                    status: ap.status,
-                    currentVisitCount: ap.currentVisitCount,
-                    todayMemo: ap.todayMemo,
-                    isNonOral: ap.isNonOral,
-                    nutrition: ap.nutrition,
-                    scPerformedToday: ap.scPerformedToday,
-                    originalScDate: ap.originalScDate,
-                    scDate: ap.scDate
-                }));
-                localStorage.setItem(key, JSON.stringify(draftData));
+                const draftObj = {
+                    activePatients: activeData,
+                    scActivePatientIds: scActiveIds
+                };
+                localStorage.setItem(key, JSON.stringify(draftObj));
             }
             updateHistoryDates();
         }
@@ -2769,6 +2779,9 @@
             const saved = localStorage.getItem(key);
             
             appState.activePatients = [];
+            appState.patients.forEach(p => {
+                p.isScActive = false;
+            });
 
             if (excelHasRecords) {
                 // Excelにデータがある場合は、Excelから読み込む (優先度1: Excel > Browser)
@@ -2798,7 +2811,17 @@
             } else if (saved) {
                 // Excelにデータが無い場合は、下書き（localStorageのキャッシュ）から復元 (優先度2: Browser)
                 try {
-                    const draftData = JSON.parse(saved);
+                    const parsed = JSON.parse(saved);
+                    let draftData = [];
+                    let scActiveIds = [];
+
+                    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                        draftData = parsed.activePatients || [];
+                        scActiveIds = parsed.scActivePatientIds || [];
+                    } else if (Array.isArray(parsed)) {
+                        draftData = parsed;
+                    }
+
                     draftData.forEach(draftItem => {
                         const p = appState.patients.find(pat => pat.id === draftItem.id);
                         if (p) {
@@ -2828,6 +2851,14 @@
                                 p.scDate = draftItem.scDate;
                             }
                             appState.activePatients.push(pCopy);
+                        }
+                    });
+
+                    // スケーリング予定の復元
+                    scActiveIds.forEach(id => {
+                        const p = appState.patients.find(pat => pat.id === id);
+                        if (p) {
+                            p.isScActive = true;
                         }
                     });
                 } catch (e) {
@@ -3092,23 +3123,63 @@
                 tdStatus.innerHTML = historyBadgeHtml;
                 tr.appendChild(tdStatus);
 
-                // SC日付列の追加
+                // SC印刷対象チェックボックスの追加
+                const tdScActive = document.createElement('td');
+                tdScActive.className = 'col-sc-active';
+                tdScActive.style.textAlign = 'center';
+                
+                const scChk = document.createElement('input');
+                scChk.type = 'checkbox';
+                scChk.className = 'sc-patient-checkbox';
+                scChk.style.width = '18px';
+                scChk.style.height = '18px';
+                scChk.style.cursor = 'pointer';
+                scChk.checked = p.isScActive || false;
+                scChk.title = 'スケーリング実施にする';
+                
+                scChk.addEventListener('change', (e) => {
+                    p.isScActive = e.target.checked;
+                    saveDraft(); // 下書きに保存
+                    updateReports(); // 印刷プレビューを更新
+                });
+                
+                // バブリング防止
+                scChk.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                });
+                
+                tdScActive.appendChild(scChk);
+                tr.appendChild(tdScActive);
+
+                // SC日付列の追加 (編集可能)
                 const tdScDate = document.createElement('td');
                 tdScDate.className = 'col-sc-date';
                 tdScDate.style.textAlign = 'center';
-                tdScDate.style.lineHeight = '1.1';
-                tdScDate.style.fontSize = '0.75rem';
                 
-                let scDateHtml = '-';
-                if (p.scDate && p.scDate !== '-') {
-                    const parts = p.scDate.split('/');
-                    if (parts.length === 3) {
-                        scDateHtml = `<span style="color: #64748b; font-size: 0.7rem;">${parts[0]}</span><br><span style="font-weight: bold;">${parts[1]}/${parts[2]}</span>`;
-                    } else {
-                        scDateHtml = escapeHtml(p.scDate);
-                    }
-                }
-                tdScDate.innerHTML = scDateHtml;
+                const scDateInput = document.createElement('input');
+                scDateInput.type = 'text';
+                scDateInput.className = 'sc-date-input';
+                scDateInput.value = p.scDate || '';
+                scDateInput.placeholder = 'YYYY/MM/DD';
+                scDateInput.id = `sc-date-setup-${p.id}`; // 相互同期用ID
+                scDateInput.style.width = '100%';
+                scDateInput.style.padding = '0.2rem 0.4rem';
+                scDateInput.style.border = '1px solid var(--border)';
+                scDateInput.style.borderRadius = '4px';
+                scDateInput.style.boxSizing = 'border-box';
+                scDateInput.style.fontSize = '0.75rem';
+                scDateInput.style.textAlign = 'center';
+                
+                scDateInput.addEventListener('input', (e) => {
+                    updateScalingDate(p.id, e.target.value, 'setup');
+                });
+                
+                // バブリング防止
+                scDateInput.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                });
+                
+                tdScDate.appendChild(scDateInput);
                 tr.appendChild(tdScDate);
 
                 // SC情報列の追加（編集可能）
@@ -3554,9 +3625,6 @@
                         <div class="item-name" style="${isCancelled ? 'text-decoration: line-through; color: var(--text-muted);' : ''}; font-size: 1.05rem; line-height: 1.3;">
                             <div style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal; margin-bottom: 0.1rem; display: flex; align-items: center; gap: 0.5rem;">
                                 <span>${escapeHtml(ap.room)}号室</span>
-                                <button class="sc-perf-btn ${ap.scPerformedToday ? 'active' : ''}" onclick="toggleScPerformed('${escapeHtml(ap.id)}')" onmousedown="event.stopPropagation()" style="padding: 0.1rem 0.35rem; font-size: 0.7rem; border-radius: 4px; cursor: pointer; transition: all 0.2s; font-family: inherit;" title="本日スケーリングを実施した場合はON（紫色）にします" ${isCancelled ? 'disabled' : ''}>
-                                    SC実施
-                                </button>
                             </div>
                             <div>${escapeHtml(ap.name)}</div>
                         </div>
@@ -3674,6 +3742,30 @@
             }
         }
 
+        // 「SC日付」を双方向に同期する関数
+        function updateScalingDate(patientId, val, source) {
+            const master = appState.patients.find(p => p.id === patientId);
+            if (master) {
+                master.scDate = val;
+            }
+            const active = appState.activePatients.find(ap => ap.id === patientId);
+            if (active) {
+                active.scDate = val;
+            }
+            if (source !== 'setup') {
+                const setupInput = document.getElementById(`sc-date-setup-${patientId}`);
+                if (setupInput) {
+                    setupInput.value = val;
+                }
+            }
+            if (source !== 'preview') {
+                const previewCell = document.getElementById(`sc-date-preview-${patientId}`);
+                if (previewCell) {
+                    previewCell.textContent = val;
+                }
+            }
+        }
+
         // 「注意事項」を双方向に同期する関数
         function updatePrecautionsInfo(patientId, val, source) {
             const master = appState.patients.find(p => p.id === patientId);
@@ -3736,24 +3828,9 @@
 
         // 左側患者テーブルのSC日付セルを高速直接更新する関数
         function updateLeftTableScDate(patientId, scDate) {
-            const setupInput = document.getElementById(`sc-info-setup-${patientId}`);
+            const setupInput = document.getElementById(`sc-date-setup-${patientId}`);
             if (setupInput) {
-                const tr = setupInput.closest('tr');
-                if (tr) {
-                    const tdScDate = tr.querySelector('.col-sc-date');
-                    if (tdScDate) {
-                        let scDateHtml = '-';
-                        if (scDate && scDate !== '-') {
-                            const parts = scDate.split('/');
-                            if (parts.length === 3) {
-                                scDateHtml = `<span style="color: #64748b; font-size: 0.7rem;">${parts[0]}</span><br><span style="font-weight: bold;">${parts[1]}/${parts[2]}</span>`;
-                            } else {
-                                scDateHtml = escapeHtml(scDate);
-                            }
-                        }
-                        tdScDate.innerHTML = scDateHtml;
-                    }
-                }
+                setupInput.value = scDate || '';
             }
         }
 
@@ -4142,17 +4219,15 @@
             if (!tbody) return;
             tbody.innerHTML = '';
 
-            const scalingList = appState.activePatients.filter(p =>
-                (p.scDate && p.scDate !== '-' && p.scDate.trim() !== '') ||
-                (p.scInfo && p.scInfo.trim() !== '')
-            );
+            const scalingList = appState.patients.filter(p => p.isScActive);
 
             if (scalingList.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="padding: 2rem;">スケーリング履歴がある選択患者がいません。</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="padding: 2rem;">スケーリング印刷対象の患者が選択されていません。</td></tr>';
             } else {
                 scalingList.forEach((p, idx) => {
                     const tr = document.createElement('tr');
-                    const isCancelled = p.status === 'cancelled';
+                    const activeP = appState.activePatients.find(ap => ap.id === p.id);
+                    const isCancelled = activeP && activeP.status === 'cancelled';
                     if (isCancelled) {
                         tr.style.color = '#777';
                         tr.style.backgroundColor = '#fafafa';
@@ -4169,20 +4244,27 @@
                     const tdNo = createCell(idx + 1, true);
                     const tdRoom = createCell(p.room, true);
                     const tdKarte = createCell(p.karteNo, true);
+                    
+                    const tdInfection = document.createElement('td');
+                    tdInfection.className = 'text-center';
+                    tdInfection.innerHTML = getInfectionBadgeHtml(p.infection);
+                    
                     const tdName = createCell(p.name, false, true);
                     const tdScDate = createCell(p.scDate || '-', true);
-
+                    
                     if (isCancelled) {
                         tdNo.style.textDecoration = 'line-through';
                         tdRoom.style.textDecoration = 'line-through';
                         tdKarte.style.textDecoration = 'line-through';
+                        tdInfection.style.textDecoration = 'line-through';
                         tdName.style.textDecoration = 'line-through';
                         tdScDate.style.textDecoration = 'line-through';
                     }
-
+                    
                     tr.appendChild(tdNo);
                     tr.appendChild(tdRoom);
                     tr.appendChild(tdKarte);
+                    tr.appendChild(tdInfection);
                     tr.appendChild(tdName);
                     tr.appendChild(tdScDate);
 
@@ -4227,6 +4309,7 @@
 
             // 1. 各施設シートの日付を更新
             appState.sheets.forEach(sheetName => {
+                if (sheetName !== currentFac) return; // 現在の施設以外は更新しない
                 const ws = appState.workbook.Sheets[sheetName];
                 const range = XLSX.utils.decode_range(ws['!ref']);
                 
@@ -4324,8 +4407,20 @@
                             writeCell(ws, infectionCellAddr, targetP.infection || '');
                         }
                         if (colScDateIdx !== -1) {
+                            let writeScDate = targetP.scDate || '';
+                            if (targetP.isScActive) {
+                                // SC実施にチェックが入っている場合、保存時に本日の日付（visitDateSlash）に自動更新する
+                                writeScDate = visitDateSlash;
+                                targetP.scDate = visitDateSlash; // メモリ上の前回SC日付も更新
+                                
+                                // 画面上の入力欄にも反映する
+                                const setupInput = document.getElementById(`sc-date-setup-${targetP.id}`);
+                                if (setupInput) {
+                                    setupInput.value = visitDateSlash;
+                                }
+                            }
                             const scDateCellAddr = XLSX.utils.encode_cell({r: r, c: colScDateIdx});
-                            writeCell(ws, scDateCellAddr, targetP.scDate || '');
+                            writeCell(ws, scDateCellAddr, writeScDate);
                         }
                         if (colScInfoIdx !== -1) {
                             const scInfoCellAddr = XLSX.utils.encode_cell({r: r, c: colScInfoIdx});
@@ -5236,9 +5331,10 @@
                         印刷プレビュー（タブ②）の「備考」セルを直接クリックしてメモを入力することも可能です。スケジュールカードの入力欄とリアルタイムで自動同期されます。長いメモを入力しても、印刷時は自動で最大3行に収まるためレイアウトが崩れません。
                     </div>
                     <div>
-                        <strong>🦷 スケーリング（SC）実施と履歴の管理</strong><br>
-                        ・<strong>SC実施ボタン</strong>：右側のスケジュールカードにある「SC実施」を押すと、前回スケーリング日が今日の往診日に自動更新され、左側一覧の表示も2段表示で更新されます。もう一度押してOFFにすると、元の保存されていた日付へ自動で復旧します。<br>
-                        ・<strong>SC情報の直接編集</strong>：「③ スケーリングリスト印刷」タブのプレビューセルを直接クリックして編集でき、左側の患者一覧とリアルタイムで同期されます。
+                        <strong>🦷 スケーリング（SC）実施と履歴の管理（往診日とは別日のスケーリング対応）</strong><br>
+                        ・<strong>スケーリング対象者の選択（SC実施チェック）</strong>：往診設定の患者一覧で、スケーリングを行う人の「SC実施」列の大きめのチェック（☑）にチェックを入れます（診察用の往診チェック（左端）とは完全に独立しており、往診実績を残さずにスケーリングリストを印刷できます）。<br>
+                        ・<strong>SC日付の自動上書き保存</strong>：チェックを入れた時点では、印刷プレビュー（前回SC日）用に過去の日付が維持されます。「保存（Excel更新）」を押した段階で、本日の日付が「SC日付」として自動的にExcelファイルに書き込まれます。<br>
+                        ・<strong>SC情報の直接編集</strong>：「③ スケーリングリスト印刷」プレビューや、患者一覧テーブルの「SC日付」「SC情報」入力欄を直接キーボード入力で更新できます。
                     </div>
                     <div>
                         <strong>🧠 賢い時間計算ロジック</strong><br>
