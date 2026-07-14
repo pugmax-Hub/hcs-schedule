@@ -3604,11 +3604,6 @@
                 item.dataset.id = ap.id;
                 item.dataset.karte = ap.karteNo;
 
-                // 往診回数タイプ
-                const isSecondVisit = ap.currentVisitCount === 2;
-                const toggleBtnClass = isSecondVisit ? 'visit-type-btn v2' : 'visit-type-btn';
-                const toggleBtnText = isSecondVisit ? '衛生士のみ' : '医師＋衛生士';
-
                 // 完了・キャンセルステータス
                 const statusBtnClass = isCancelled ? 'status-toggle-btn cancelled' : 'status-toggle-btn';
                 const statusBtnText = isCancelled ? '❌ 不実施' : '✅ 実施';
@@ -3641,10 +3636,6 @@
                             <!-- 実施・キャンセル切り替えボタン -->
                             <button class="${escapeHtml(statusBtnClass)}" onclick="togglePatientStatus('${escapeHtml(ap.id)}')" title="往診を実施したかどうかを切り替えます" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
                                 ${escapeHtml(statusBtnText)}
-                            </button>
-                            <!-- 回数切り替えボタン -->
-                            <button class="${escapeHtml(toggleBtnClass)}" onclick="toggleVisitCount('${escapeHtml(ap.id)}')" ${isCancelled ? 'disabled' : ''} title="クリックで往診タイプを切り替え" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
-                                ${escapeHtml(toggleBtnText)}
                             </button>
                             <!-- 食事区分切り替えボタン -->
                             <button class="${escapeHtml(mealBtnClass)}" onclick="toggleMealStatus('${escapeHtml(ap.id)}')" title="クリックで食事区分を切り替え" style="padding: 0.15rem 0.4rem; font-size: 0.75rem; min-width: 60px;">
@@ -3834,19 +3825,6 @@
             }
         }
 
-        // 往診回数のトグル切り替え
-        function toggleVisitCount(patientId) {
-            const patient = appState.activePatients.find(ap => ap.id === patientId);
-            if (patient) {
-                patient.currentVisitCount = patient.currentVisitCount === 2 ? 1 : 2;
-                renderSelectedList();
-                calculateScheduleTimes();
-                updateReports();
-                
-                saveDraft(); // 下書き保存
-            }
-        }
-
         // 食事区分（経口・非経口）のトグル切り替え
         function toggleMealStatus(patientId, event) {
             if (event) event.stopPropagation(); // 行選択などのクリック発火を防止
@@ -3931,22 +3909,14 @@
                 let hygStart = null;
                 let hygEnd = null;
 
-                if (p.currentVisitCount === 1) {
-                    // 1回目：医師(docInterval分) + 衛生士(20分)
-                    docStart = pairDocStart;
-                    docEnd = pairDocStart + docInterval;
+                // 往診は常に医師 + 衛生士で実施する。
+                // currentVisitCount は月内実績の管理用で、時間配分には使わない。
+                docStart = pairDocStart;
+                docEnd = pairDocStart + docInterval;
 
-                    // 医師と衛生士が続けて作業する場合、時間を被らせず1分あける
-                    hygStart = Math.max(docEnd + 1, pairHygStart);
-                    hygEnd = hygStart + 20;
-                } else {
-                    // 2回目：衛生士のみ(20分)
-                    docStart = null;
-                    docEnd = null;
-
-                    hygStart = pairHygStart;
-                    hygEnd = hygStart + 20;
-                }
+                // 医師と衛生士が続けて作業する場合、時間を被らせず1分あける
+                hygStart = Math.max(docEnd + 1, pairHygStart);
+                hygEnd = hygStart + 20;
 
                 p.docTimeStr = docStart !== null ? `${minutesToTime(docStart)} - ${minutesToTime(docEnd)}` : '-';
                 p.hygTimeStr = `${minutesToTime(hygStart)} - ${minutesToTime(hygEnd)}`;
@@ -4069,7 +4039,7 @@
                         tdName.style.textDecoration = 'line-through';
                     }
                     tr.appendChild(tdName);
-                    tr.appendChild(createCell(isCancelled ? '不実施' : p.docTimeStr, true, p.currentVisitCount === 1 && !isCancelled));
+                    tr.appendChild(createCell(isCancelled ? '不実施' : p.docTimeStr, true, !isCancelled));
                     tr.appendChild(createCell(isCancelled ? '不実施' : p.hygTimeStr, true, !isCancelled));
                     tr.appendChild(createCell(p.denture, true)); // 口腔状況 (義歯)
                     
