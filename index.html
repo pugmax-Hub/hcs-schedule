@@ -694,6 +694,24 @@
             gap: 0.75rem;
         }
 
+        #report-scaling-tab .preview-controls {
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            #report-scaling-tab .btn-group {
+                width: 100%;
+            }
+
+            #report-scaling-tab .btn-group .btn {
+                flex: 1;
+                justify-content: center;
+                padding: 0.7rem 0.6rem;
+                font-size: 0.8rem;
+            }
+        }
+
         .btn {
             background-color: var(--primary);
             color: #fff;
@@ -1743,10 +1761,16 @@
             <div class="tab-content" id="report-scaling-tab">
                 <div class="preview-controls">
                     <span style="font-weight: bold; color: var(--text-dark);">🖨️ 選択患者の前回スケーリング履歴およびメモの印刷リストです。</span>
-                    <button class="btn btn-secondary" onclick="window.print()">
-                        <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
-                        スケーリングリストを印刷 (A4)
-                    </button>
+                    <div class="btn-group">
+                        <button class="btn" id="scaling-pdf-button" onclick="downloadScalingPDF()">
+                            <i data-lucide="file-text" style="width: 18px; height: 18px;"></i>
+                            PDF保存 (A4)
+                        </button>
+                        <button class="btn btn-secondary" onclick="window.print()">
+                            <i data-lucide="printer" style="width: 18px; height: 18px;"></i>
+                            スケーリングリストを印刷 (A4)
+                        </button>
+                    </div>
                 </div>
                 <div class="print-area-wrapper">
                     <div class="a4-page" id="print-scaling-page">
@@ -4663,6 +4687,52 @@
                 alert('PDFの生成中にエラーが発生しました。');
                 if (indicator) indicator.style.display = 'block';
             });
+        }
+
+        // スケーリングリストをPDFとして直接ダウンロード
+        /* exported downloadScalingPDF */
+        async function downloadScalingPDF() {
+            if (!appState.patients.some(p => p.isScActive)) {
+                alert('スケーリング印刷対象の患者が選択されていないため、PDFを出力できません。');
+                return;
+            }
+
+            const button = document.getElementById('scaling-pdf-button');
+            if (button.disabled) return;
+
+            const facility = appState.currentSheet || '施設';
+            const dateStr = appState.selectedDate ? appState.selectedDate.replace(/-/g, '') : '';
+
+            button.disabled = true;
+
+            try {
+                // 出力用コピーの固定高さを外し、末尾の空白ページを防ぐ。
+                const element = document.getElementById('print-scaling-page').cloneNode(true);
+                element.style.minHeight = '0';
+                element.style.boxShadow = 'none';
+                const indicator = element.querySelector('.print-indicator');
+                if (indicator) indicator.remove();
+
+                await html2pdf().set({
+                    margin: 0,
+                    filename: `${facility}_スケーリングリスト_${dateStr}.pdf`,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        scrollX: 0,
+                        scrollY: 0
+                    },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    pagebreak: { mode: ['css', 'legacy'], avoid: 'tr' }
+                }).from(element).save();
+            } catch (err) {
+                console.error(err);
+                alert('PDFの生成中にエラーが発生しました。もう一度お試しください。');
+            } finally {
+                button.disabled = false;
+            }
         }
 
         // モバイル用イベントの設定
