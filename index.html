@@ -2828,9 +2828,9 @@
                     }
                 });
                 
-                // もし30名を超えていたら、ダイアログ表示 (ただし activePatients には全員入れる)
-                if (loadedCountFromExcel > 30) {
-                    alert(`【往診設定】Excelから手動で追加されたデータを含め、本日分として合計 ${loadedCountFromExcel} 名の往診データを読み込みました。\n\n※印刷プレビューは2枚にわたって自動構成されます。\n※アプリ画面上での新規選択は最大30名までに制限されます。`);
+                // もし50名を超えていたら、ダイアログ表示 (ただし activePatients には全員入れる)
+                if (loadedCountFromExcel > 50) {
+                    alert(`【往診設定】Excelから手動で追加されたデータを含め、本日分として合計 ${loadedCountFromExcel} 名の往診データを読み込みました。\n\n※印刷プレビューは2枚にわたって自動構成されます。\n※アプリ画面上での新規選択は最大50名までに制限されます。`);
                 }
             } else if (saved) {
                 // Excelにデータが無い場合は、下書き（localStorageのキャッシュ）から復元 (優先度2: Browser)
@@ -3061,8 +3061,8 @@
                                         continue;
                                     }
                                     
-                                    // 30名の上限チェック
-                                    if (chk.checked && currentCount >= 30) {
+                                    // 50名の上限チェック
+                                    if (chk.checked && currentCount >= 50) {
                                         continue;
                                     }
                                     
@@ -3273,9 +3273,9 @@
             const targetMonth = targetDateStr.substring(0, 7);
             
             if (isChecked) {
-                // 30名の上限チェック
-                if (appState.activePatients.length >= 30) {
-                    alert('1回の往診スケジュールに登録できるのは最大30名までです。');
+                // 50名の上限チェック
+                if (appState.activePatients.length >= 50) {
+                    alert('1回の往診スケジュールに登録できるのは最大50名までです。');
                     renderPatientTable();
                     return;
                 }
@@ -3501,9 +3501,9 @@
                     return true;
                 });
 
-                // 30名の上限チェック
-                if (appState.activePatients.length + toAdd.length > 30) {
-                    alert('1回の往診スケジュールに登録できるのは最大30名までです。\n30名を超えるため、この部屋の一括選択はできません。');
+                // 50名の上限チェック
+                if (appState.activePatients.length + toAdd.length > 50) {
+                    alert('1回の往診スケジュールに登録できるのは最大50名までです。\n50名を超えるため、この部屋の一括選択はできません。');
                     return;
                 }
 
@@ -3559,7 +3559,7 @@
                             return;
                         }
 
-                        if (currentCount < 30) {
+                        if (currentCount < 50) {
                             togglePatientActiveNoRender(p, true, targetMonth);
                             currentCount++;
                         } else {
@@ -3570,7 +3570,7 @@
             });
 
             if (hitLimit) {
-                alert('1回の往診スケジュールに登録できるのは最大30名までです。\n30名を超えるため、一部の選択をスキップしました。');
+                alert('1回の往診スケジュールに登録できるのは最大50名までです。\n50名を超えるため、一部の選択をスキップしました。');
             }
 
             if (skippedPatients.length > 0) {
